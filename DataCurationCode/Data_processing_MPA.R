@@ -30,7 +30,7 @@ total_resights <- metadata %>%
   group_by(season, animalID) %>%
   filter(as.Date(date) >= as.Date(BirthDate)) %>%
   summarize(total_resights = n()) %>%
-  filter(total_resights >= 17)
+  filter(total_resights >= 15)
 
 ##calculate number of times mom was seen with 1 pup
 count_1_pup <- metadata %>%
@@ -40,7 +40,7 @@ count_1_pup <- metadata %>%
 
 #calculate mother-pup association strength (1s out of total resights)
 Proportion_MPA <- total_resights %>%
-  left_join(with_1_pup, by = c("animalID", "season")) %>%
+  left_join(count_1_pup, by = c("animalID", "season")) %>%
   mutate(count_1_pup = replace_na(count_1_pup, 0),
          proportion = count_1_pup / total_resights)
 
@@ -66,7 +66,39 @@ ggplot(data = sample_size_per_season, aes(x = factor(season), y = sample_size)) 
   labs(title = "Sample size for each season", x = "Season", y = "Sample size") +
   theme_few()
 
+#sample size per Age
+sample_size_per_age <- metadata %>%
+  group_by(AgeYears) %>%
+  summarise(sample_size = n_distinct(animalID))
+
+#create a plot for sample size by age per season
+ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(title = "Sample Size for each Age", x = "Age", y = "Sample Size") +
+  theme_few()
+
+#Assign each female to a harem in a given season
+#First count number of times each animal was seen in each area
+harem_assignment <- metadata %>%
+group_by(animalID, season, area) %>%
+  summarise(count = n(), .groups = "drop")
+
+# For each animal, find the location with the maximum count
+most_frequent_harem <- harem_assignment %>%
+  group_by(animalID) %>%
+  filter(count == max(count)) %>%
+  ungroup()
+
+#FOR FUN LM
 #Calculate arrival date
-ArrivalDate = ResightTable %>%
+arrival_date <- metadata %>%
   group_by(animalID) %>%
   summarize(ArrivalDate = first(as.Date(date))) 
+
+ggplot(data = metadata, aes(x = AgeYears, y = proportion)) +
+  geom_point() +
+  labs(title = "Proportion MPA by Age", x = "Age", y = "MPA") +
+  theme_few()
+
+mod_Age_by_Proportion <- lm(AgeYears ~ proportion, data = metadata)
+summary(mod_Age_by_Proportion)
