@@ -78,17 +78,20 @@ metadata <- metadata %>%
 
 ##Make table with intrinsic factors
 intrinsic_variables <- metadata %>%
-  select(animalID, season, AgeYears, BirthDate, year_born, proportion) %>%
-  distinct() %>%
-  filter(!is.na(proportion))
+  select(animalID, season, AgeYears, BirthDate, year_born, proportion, total_resights) %>%
+  distinct() %>% #eliminate the metadata multiple rows; we only need one per animalID per season
+  filter(!is.na(proportion), proportion > 0) %>% #eliminate NA and 0s for proportion
+  group_by(animalID) %>%  
+  mutate(year_born_fct = factor(year_born), #make year_born a factor in separate column
+         animalID_fct = factor(animalID), #make animalID a factor in separate column
+         season_fct = factor(season),
+         age_last_seen = max(AgeYears)) %>% #calculate age at last observation
+  ungroup()
 
 ##Make a table with extrinsic factors
 #for now, we only have harem assignment
 #NEED: weather/tidal, harem density for each harem
 extrinsic_variables <-
-
-#Visualizing trends in arrival and pupping dates
-#ask Maddie how to visualize this, as BirthDate is given with year attached
 
 ##Calculate arrival date
 arrival_date <- metadata %>%
@@ -119,6 +122,9 @@ ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
   labs(title = "Sample Size for each Age", x = "Age", y = "Sample Size") +
   theme_few()
 
+
+
+
 ##FOR FUN
 #calculate arrival date
 arrival_date <- metadata %>%
@@ -139,66 +145,3 @@ rpt_arrival_date <- rpt(
   npermut = 0
 )
 summary(rpt_arrival_date)
-
-#calculating BirthDate as a proxy for harem density
-
-##calculating consistency metrics
-consistency_by_individual <- intrinsic_variables %>%
-  group_by(animalID) %>%
-  summarise(mean_proportion = mean(proportion, na.rm = TRUE),
-    sd_proportion = sd(proportion, na.rm = TRUE),
-    n_obs = n()) %>%
-  arrange(sd_proportion)
-
-#filter by greater than 3 calculations across lifetime
-consistency_filtered <- consistency_by_individual %>%
-  filter(n_obs >= 3)
-
-##plot for consistency- standard dev per individual
-ggplot(data = consistency_filtered, aes(x = reorder(animalID, sd_proportion), y = sd_proportion)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  labs(title = "Within-Individual Variability in Proportion", x = "Animal ID (sorted)", y = "SD of Proportion")
-
-ggplot(data = consistency_filtered, aes(x = mean_proportion, y = sd_proportion)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = TRUE) +
-  labs(x = "Average Proportion", y = "Standard Deviation",
-       title = "Individual Consistency in Mom-Pup Association")
-
-##trying brms modeling for consistency
-install.packages("brms")
-library(brms)
-
-consistency_proportion <- intrinsic_variables %>%
-  group_by(animalID) %>%
-  summarise(season = season, proportion = proportion, AgeYears = AgeYears, n_obs = n()) %>%
-  filter(n_obs >= 3)
-
-##tried repeatability models with and without Age
-#repeatability with age
-brm(
-  proportion ~ AgeYears + (1 | animalID),
-  family = zero_one_inflated_beta(),
-  data = consistency_proportion
-)
-
-ranef(fit)$animalID
-
-#second model for repeatability
-fit_zoi_beta <- brm(
-  bf(proportion ~ AgeYears + (1 | animalID),  
-     phi ~ 1,                              
-     zoi ~ 1,                                  
-     coi ~ 1),                                        
-  family = zero_one_inflated_beta(),
-  data = consistency_proportion,
-  chains = 4, iter = 4000, control = list(adapt_delta = 0.99)
-)
-
-ggplot(consistency_filtered, aes(x = mean_proportion, y = sd_proportion)) +
-  geom_point() +
-  geom_vline(xintercept = 0.95, linetype = "dashed") +
-  geom_hline(yintercept = 0.05, linetype = "dashed") +
-  labs(x = "Lifetime Mean Proportion", y = "Lifetime SD of Proportion")
-
