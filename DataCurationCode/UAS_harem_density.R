@@ -71,7 +71,7 @@ seals_by_beach <- st_intersection(beaches, centroids)
 # Calculate female density ------------------------------------------------
 density.df <- data.frame()
 
-for (i in i:length(dates)) {
+for (i in 1:length(dates)) {
   
   survey.subset <- seals_by_beach %>%
     filter(date == dates[i],
@@ -92,11 +92,32 @@ for (i in i:length(dates)) {
 
 
 
+# Plot an example ---------------------------------------------------------
+
+seal.buffer <- st_buffer(st_centroid(uas.data[1,]), 10)
+
+plot(st_geometry(seal.buffer))
+
+plot(st_geometry(uas.data[1,]), add = TRUE, col = "red")
+
+int <- uas.data %>%
+  filter(date == uas.data[[1, 6]]) %>%
+  st_centroid() %>%
+  st_intersection(seal.buffer, 10)
+
+
+int.poly <- uas.data[row.names(uas.data) %in% row.names(int),]
+
+
+plot(st_geometry(int.poly), add = TRUE)
+
+
+
 # Save data ---------------------------------------------------------------
 
 
 seal.density <- density.df %>%
- select(date, class, lat, lon, Beach) %>%
+ select(date, class, lat, lon, Beach, density) %>%
  st_drop_geometry()
 
 
