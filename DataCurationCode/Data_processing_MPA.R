@@ -120,14 +120,17 @@ sample_size_per_age <- intrinsic_variables %>%
 ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
   geom_bar(stat = "identity", fill = "lightblue") +
   labs(title = "Sample Size for each Age", x = "Age", y = "Sample Size") +
-  theme_few()
+  theme_few() +
+  scale_y_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 20)
 
 ##General distribution of proportions
 ggplot(data = intrinsic_variables, aes(x = proportion)) +
-  geom_histogram(binwidth = 0.01, fill = "skyblue", color = "black") +
+  geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
   labs(title = "Histogram of Proportion MPA",
        x = "Proportion MPA", y = "Frequency") +
   scale_y_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 10) +
   theme_few()
 
 ##Graph age against proportion
@@ -139,7 +142,7 @@ ggplot(data = intrinsic_variables, aes(x = AgeYears, y = proportion)) +
 ##Graph season against proportion
 ggplot(data = intrinsic_variables, aes(x = season_fct, y = proportion)) +
   geom_violin(fill = "lightblue", color = "darkblue") +
-  geom_jitter(width = 0.1, alpha = 0.5) + 
+  geom_jitter(width = 0.1, alpha = 0.5) +
   labs(title = "MPA distribution by season", x = "Season", y = "Proportion")
 
 ##Graph year born against proportion
