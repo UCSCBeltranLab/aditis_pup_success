@@ -96,9 +96,9 @@ total_pups_lifetime <- metadata %>%
 consistency_data <- consistency_data %>%
   left_join(total_pups_lifetime, by = "animalID")
 
-mod_gamma_sd <- glmmTMB(sd_proportion ~ age_last_seen + n_obs,
-                 data = consistency_data[consistency_data$sd_proportion > 0, ],
-                 family = Gamma(link = "log"))
+mod_gamma_sd <- glmmTMB(mean_proportion ~ year_born_fct + n_obs,
+                 data = consistency_data,
+                 family = Gamma())
 summary(mod_gamma_sd)
 exp(fixef(mod_gamma_sd)$cond) 
 DHARMa::simulateResiduals(mod_gamma_sd, plot = TRUE)
@@ -125,7 +125,7 @@ pp_check(mod_consistency)
 
 check_collinearity(mod_consistency)
 
-############### Calculate population repeatability
+############### Calculate population repeatability ######################
 
 # Calculate mean proportion
 mu <- mean(consistency_data$proportion, na.rm = TRUE)
@@ -156,7 +156,7 @@ R <- var_animal_resp / (var_animal_resp + var_resid)
 # Round and print
 round(R, 3)
 
-######### Calculate within-individual Repeatability
+############# Calculate within-individual Repeatability ################
 
 # Step 1: Convert draws to data frame
 draws <- as_draws_df(mod_consistency)
