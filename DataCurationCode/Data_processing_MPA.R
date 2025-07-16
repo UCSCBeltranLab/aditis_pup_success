@@ -1,6 +1,5 @@
 library(tidyverse)
 library(lubridate)
-library(RMySQL)
 library(utils)
 library(dplyr)
 library(ggplot2)
@@ -76,27 +75,35 @@ year_born <- age_in_first_season %>%
 metadata <- metadata %>%
   left_join(year_born, by = "animalID")
 
+##Total pups in lifetime
+total_pups_lifetime <- metadata %>%
+  select(animalID, season) %>%
+  distinct() %>%
+  group_by(animalID) %>%
+  summarise(total_pups = n(), .groups = "drop")
+
+intrinsic_variables <- intrinsic_variables %>%
+  left_join(total_pups_lifetime, by = "animalID")
+
 ##Make table with intrinsic factors
 intrinsic_variables <- metadata %>%
   select(animalID, season, AgeYears, BirthDate, year_born, proportion, total_resights) %>%
   distinct() %>% #eliminate the metadata multiple rows; we only need one per animalID per season
   filter(!is.na(proportion), proportion > 0) %>% #eliminate NA and 0s for proportion
+  mutate(BirthDate = as.Date(BirthDate)) %>%
   group_by(animalID) %>%  
   mutate(year_born_fct = factor(year_born), #make year_born a factor in separate column
          animalID_fct = factor(animalID), #make animalID a factor in separate column
          season_fct = factor(season),
-         age_last_seen = max(AgeYears)) %>% #calculate age at last observation
+         age_last_seen = max(AgeYears), #calculate age at last observation
+         BirthDate = format(BirthDate, "%m-%d")) %>% #format BirthDate as month-day
   ungroup()
 
-##Make a table with extrinsic factors
-#for now, we only have harem assignment
-#NEED: weather/tidal, harem density for each harem
-extrinsic_variables <-
-
 ##Calculate arrival date
-arrival_date <- metadata %>%
+arrival <- metadata %>%
   group_by(animalID, season) %>%
-  summarize(arrival_date = first(as.Date(date)))
+  summarize(arrival_date = first(as.Date(date))) %>%
+  mutate(arrival_md = format(arrival_date, "%m-%d"))
 
 ##Visualizing sample size is useful for determining stringency
 ##sample size per season
@@ -123,6 +130,20 @@ ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
   theme_few() +
   scale_y_continuous(n.breaks = 10) +
   scale_x_continuous(n.breaks = 20)
+
+ggplot(intrinsic_variables, aes(x = BirthDate)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(x = "Birth Date", y = "Number of Animals",
+       title = "Distribution of Birth Dates") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#Proportion MPA by birthdate
+ggplot(data = intrinsic_variables, aes(x = BirthDate, y = proportion)) +
+  geom_violin(fill = "lightblue", color = "darkblue") +
+  geom_jitter(width = 0.1, alpha = 0.5) +
+  labs(x = "Birth Date", y = "Proportion",
+       title = "MPA distribution by Birth Date") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 ##General distribution of proportions
 ggplot(data = intrinsic_variables, aes(x = proportion)) +
