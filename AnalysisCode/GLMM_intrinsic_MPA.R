@@ -9,7 +9,7 @@ library(ggplot2)
 library(ggthemes)
 library(RColorBrewer)
 
-############################## Old Models ########################################
+################################## Old Models ########################################
 
 ##GLMM Gamma model with polynomial Age
 mod_01_intrinsic_glmm <- glmmTMB(flipped_prop ~ poly(AgeYears, 3) + year_born_fct + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
@@ -38,6 +38,7 @@ check_collinearity(mod_02_intrinsic_glmm)
 ##First, modify intrinsic_variables so it has a column for proportion = 1 (1) OR not 1 (0)
 intrinsic_variables <- intrinsic_variables %>%
   mutate(is_one = as.numeric(proportion == 1))
+
 
 ##Binomial model for proportion == 1
 mod_binom_1_only <- glmmTMB(is_one ~ ns(AgeYears, 3) + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
@@ -467,5 +468,80 @@ ggplot(pred_grid_2016_2025, aes(x = AgeYears, y = predicted, color = age_cat, fi
   labs(x = "Age (Years)", color = "Age class", fill = "Age class") +
   theme_classic()
   
+
+
+
+
+
+
+
+
+
+
+
+
+######################### Model with Birth Date Timing #########################
+
+library(lubridate)
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(BirthDOY = yday(as.Date(paste0("2023-", BirthDate))))
+
+early_end <- yday(as.Date("2024-01-15"))    # 5
+early_start <- yday(as.Date("2024-12-13"))  # 348
+peak_start <- yday(as.Date("2024-01-15"))   # 6
+peak_end <- yday(as.Date("2024-02-05"))     # 20
+
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(birth_group = case_when(
+    BirthDOY <= 10 ~ "Early",    # Jan 1-10
+    BirthDOY <= 30 ~ "Peak",     # Jan 11-20
+    TRUE ~ "Late"                # Jan 21 onwards
+  ))
+
+table(intrinsic_variables$birth_group)
+
+mod_binom <- glmmTMB(is_one ~ ns(AgeYears, 3) + birth_group + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
+                          data = intrinsic_variables,
+                          family = binomial())
+summary(mod_binom)
+exp(fixef(mod_gamma_non1)$cond) 
+DHARMa::simulateResiduals(mod_gamma_non1, plot = TRUE)
+
+################################# 2+ pups model ####################################
+
+
+intrinsic_variables_2 <- metadata %>%
+  select(animalID, season, AgeYears, withpup) %>%
+  filter(withpup != '?') %>%
+  group_by(animalID) %>%
+  mutate(pup_more_than_2 = ifelse(any(withpup >= 2), 1, 0)) %>%  #Check if any year for this animal has withpup >= 2
+  ungroup() %>%
+  distinct(animalID, .keep_all = TRUE) %>% #Keep only one row per animalID
+  mutate(animalID_fct = factor(animalID), season_fct = factor(season))
+
+mod_binom_greater_2 <- glmmTMB(pup_more_than_2 ~ AgeYears + (1 | animalID_fct) + (1 | season_fct),
+                           data = intrinsic_variables_2,
+                           family = binomial(link = "logit"))
+summary(mod_binom_greater_2)
+
+
+pred_age_greater_2 <- ggpredict(mod_binom_greater_2,
+                                terms = "AgeYears [all]")
+
+
+ggplot(pred_age_greater_2, aes(x = x, y = predicted)) +
+  geom_line(linewidth = 1.2, color = "#2A5EA7") +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              alpha = 0.2, fill = "#7EAAC1") + #confidence intervals
+  labs(title = "Predicted probability of at least 1 2+ Pup Sighting vs. Age",
+       x = "Age (Years)",
+       y = "Predicted Probability of 2+ Sighting") +
+  scale_y_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 20) +
+  theme_few()
+
+
+
+
 
 
