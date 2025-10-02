@@ -1,5 +1,4 @@
 # Load libraries and data -------------------------------------------------
-
 library(dplyr)
 library(lubridate)
 library(sf)
@@ -63,8 +62,6 @@ centroids <- st_centroid(uas.data)
 sf_use_s2(F)
 
 seals_by_beach <- st_intersection(beaches, centroids)
-
-
 
 
 # Calculate female density ------------------------------------------------

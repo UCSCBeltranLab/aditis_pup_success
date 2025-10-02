@@ -50,7 +50,7 @@ metadata <- metadata %>%
 ##assign each female to a harem in a given season
 area_counts <- metadata %>%
   group_by(animalID, season, area) %>%
-  summarise(count = n(), .groups = "drop") #count number of times each animal was seen in each area
+  summarize(count = n(), .groups = "drop") #count number of times each animal was seen in each area
 
 #for each animal, find the area with the maximum count
 harem_assignment <- area_counts %>%
@@ -69,7 +69,7 @@ age_in_first_season <- metadata %>%
 #Year born = first season seen - Age in that season
 year_born <- age_in_first_season %>%
   group_by(animalID) %>%
-  summarise(year_born = season - AgeYears)
+  summarize(year_born = season - AgeYears)
 
 ##Update the metadata with year_born
 metadata <- metadata %>%
@@ -80,7 +80,7 @@ total_pups_lifetime <- metadata %>%
   select(animalID, season) %>%
   distinct() %>%
   group_by(animalID) %>%
-  summarise(total_pups = n(), .groups = "drop")
+  summarize(total_pups = n(), .groups = "drop")
 
 intrinsic_variables <- intrinsic_variables %>%
   left_join(total_pups_lifetime, by = "animalID")
@@ -109,10 +109,15 @@ arrival <- metadata %>%
 ##sample size per season
 sample_size_per_season <- intrinsic_variables %>%
   group_by(season) %>%
-  summarise(sample_size = n_distinct(animalID))
+  summarize(sample_size = n_distinct(animalID))
+
+##sample size per age
+sample_size_per_age <- intrinsic_variables %>%
+  group_by(AgeYears) %>%
+  summarize(sample_size = n_distinct(animalID))
 
 ##create a plot for sample size per season
-ggplot(data = sample_size_per_season, aes(x = factor(season), y = sample_size)) +
+ggplot(data = sample_size_per_season, aes(x = season, y = sample_size)) +
   geom_bar(stat = "identity", fill = "lightblue") +
   labs(title = "Sample size for each season", x = "Season", y = "Sample size") +
   theme_few() + 
@@ -121,7 +126,7 @@ ggplot(data = sample_size_per_season, aes(x = factor(season), y = sample_size)) 
 ##sample size per age
 sample_size_per_age <- intrinsic_variables %>%
   group_by(AgeYears) %>%
-  summarise(sample_size = n_distinct(animalID))
+  summarize(sample_size = n_distinct(animalID))
 
 ##create a plot for sample size by age
 ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +

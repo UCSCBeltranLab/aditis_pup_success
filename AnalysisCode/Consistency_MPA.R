@@ -1,5 +1,5 @@
-##Consistency models and figures
 library(performance)
+################Consistency models and figures###############
 
 ###################### Playing around with consistency ##########################
 
@@ -108,7 +108,6 @@ check_collinearity(mod_gamma_sd) #checking for collinearity
 
 library(brms)
 library("bayestestR")
-install.packages("tidybayes")
 library(tidybayes)
 
 #trying brms version with 0-1 inflated beta
