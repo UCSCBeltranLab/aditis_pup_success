@@ -92,13 +92,15 @@ tide_wave <- left_join(wave_data_clean, tide_data_clean, by = c("wave_datetime" 
 extreme_wave_threshold <- 30 #30 Kw/h
 extreme_tide_threshold <- 6 #6 ft  
 
-#Flag cases where both wave power and tide were = or > extreme
+#Flag cases where both wave power and tide were extreme
 tide_wave_flagged <- tide_wave %>%
   mutate(extreme_wave = wave_power >= extreme_wave_threshold,
     extreme_tide = `Verified (ft)` >= extreme_tide_threshold,
     extreme_both = extreme_wave & extreme_tide) %>%
   group_by(season) %>%
-  summarize(n_extreme_both = sum(extreme_both, na.rm = TRUE)) #summarize occurrences of both per season
+  summarize(n_extreme_both = sum(extreme_both),
+            n_extreme_tide = sum(extreme_tide),
+            n_extreme_wave = sum(extreme_wave)) #summarize occurrences of both per season
 
 #Plot extreme tide and wave events per season
 ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
@@ -113,21 +115,23 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
 #Seal density csv read
 seal.density <- read.csv("seal.density.csv")
 
-#Area density
+#Avg area density calculation
 area_density <- seal.density %>%
   rename(area = Beach) %>%
   mutate(date = ymd(date), season = year(date)) %>%
   group_by(area, season) %>%
   summarize(avg_density = mean(density), .groups = "drop")
 
-#Plot area density for each harem
-ggplot(area_density, aes(x = reorder(area, -avg_density), y = avg_density)) +
-  geom_col() +
-  labs(title = "Average Harem Density by Area",
-       x = "Area",
-       y = "Average Harem Density") +
+#check what area density looks like per-season at each location
+ggplot(area_density, aes(x = area, y = avg_density, fill = area)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ season, scales = "free_x") +
+  labs(x = "Location",
+       y = "Average Density",
+       title = "Harem Density per Location by Season") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
 
 #Only need season after 2016 to match the harem density data
 metadata_filtered <- metadata %>%
@@ -146,11 +150,12 @@ harem_assignment <- area_counts %>%
 
 #Join extrinsic harem data with metadata to include harem assignment and area density
 extrinsic_harem <- metadata_filtered %>%
-  select(animalID, season, proportion, total_resights) %>%
+  select(animalID, season, proportion, total_resights, AgeYears) %>%
   distinct() %>%
   filter(!is.na(proportion), proportion > 0) %>%
   left_join(harem_assignment, by = c("animalID", "season")) %>%
-  left_join(area_density, by = c("area", "season"))
+  left_join(area_density, by = c("area", "season")) %>%
+  mutate(is_one = as.numeric(proportion == 1))
 
 #Check whether there are ties for assigned harems
 harem_duplicates <- extrinsic_harem %>%
@@ -168,8 +173,51 @@ extrinsic_harem <- extrinsic_harem %>%
 unique(extrinsic_harem$area)
 unique(seal.density$Beach) #there are location mismatches
 
+#Remove NAs for now (come back to this later)
+extrinsic_harem <- extrinsic_harem %>%
+  filter(!is.na(avg_density))
+
+#create extrinsic variables with tide/wave data and harem density
+extrinsic_variables <- extrinsic_harem %>%
+  left_join(tide_wave_flagged, by = "season") %>%
+  mutate(season_fct = factor(season)) %>%
+  mutate(area_fct = factor(area))
+
+#create a version of extrinsic_variables with proportion < 1
+extrinsic_variables_sub <- extrinsic_variables %>%
+  filter(proportion < 1)
+
+##transform proportion for this filtered data to make it suitable for gamma distribution 
+flipped_prop <- max(extrinsic_variables_sub$proportion) - extrinsic_variables_sub$proportion #subtract all proportions from the maximum
+flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
+extrinsic_variables_sub$flipped_prop <- flipped_prop
 
 
+
+
+
+
+
+
+
+##Data in case we want a separate weather model
+#Join extrinsic weather data with metadata for separate modeling
+extrinsic_weather <- metadata %>%
+  select(animalID, season, proportion, total_resights, AgeYears) %>%
+  distinct() %>%
+  filter(!is.na(proportion), proportion > 0) %>%
+  left_join(tide_wave_flagged, by = "season") %>%
+  mutate(is_one = as.numeric(proportion == 1),
+         season_fct = factor(season))
+
+#create a version of extrinsic_variables with proportion < 1
+extrinsic_weather_sub <- extrinsic_weather %>%
+  filter(proportion < 1)
+
+##transform proportion for this filtered data to make it suitable for gamma distribution 
+flipped_prop <- max(extrinsic_weather_sub$proportion) - extrinsic_weather_sub$proportion #subtract all proportions from the maximum
+flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
+extrinsic_weather_sub$flipped_prop <- flipped_prop
 
 
 

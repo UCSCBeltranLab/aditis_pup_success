@@ -1,4 +1,3 @@
-library(performance)
 ################Consistency models and figures###############
 
 ###################### Playing around with consistency ##########################
@@ -79,30 +78,24 @@ ggplot(consistency_data, aes(x = animalID_fct, y = proportion, fill = sd_proport
   labs(x = "Animal ID", y = "Proportion") +
   theme(axis.text.x = element_text(angle = 90, size = 6))
 
-###################### Consistency Model using SD  ################################
-##creating a consistency model using animal SD as the response
-#consistency as a function of covariates
-consistency_data <- consistency_data %>%
-  mutate(age_last_seen = as.numeric(age_last_seen)) %>%
-  mutate(n_obs = as.numeric(n_obs))
+################################ Consistency Model 1 ################################
+library(performance)
+library(glmmTMB)
+# Smithson & Verkuilen (2006) correction
+n <- nrow(consistency_data)  # total number of observations
+consistency_data$prop_adj <- (consistency_data$proportion * (n - 1) + 0.5) / n
 
-#now let's find out how many pups each mom had across her lifetime
-total_pups_lifetime <- metadata %>%
-  select(animalID, season) %>%
-  distinct() %>%
-  group_by(animalID) %>%
-  summarise(total_pups = n(), .groups = "drop")
+mod_group <- glmmTMB(
+  prop_adj ~ age10:age_cat + age_last_seen + total_resights + (1|season_fct) + (1|animalID_fct),
+  family = beta_family(),
+  data = intrinsic_variables
+)
+summary(mod_group)
 
-consistency_data <- consistency_data %>%
-  left_join(total_pups_lifetime, by = "animalID")
-
-mod_gamma_sd <- glmmTMB(mean_proportion ~ year_born_fct + n_obs,
-                 data = consistency_data,
-                 family = Gamma())
-summary(mod_gamma_sd)
-exp(fixef(mod_gamma_sd)$cond) 
-DHARMa::simulateResiduals(mod_gamma_sd, plot = TRUE)
-check_collinearity(mod_gamma_sd) #checking for collinearity
+check_collinearity(mod_var)
+r2(mod_var)
+check_singularity(mod_var)
+VarCorr(mod_var)$cond$animalID_fct
 
 ################################ Consistency MPA DHGLM ######################################
 
@@ -187,5 +180,115 @@ re_phi_df$R_i <- var_animal_resp / (var_animal_resp + re_phi_df$var_resid_i)
 hist(re_phi_df$R_i, breaks = 30, main = "Individual Repeatability (R_i)", xlab = "R_i")
   
 
+#########ICC
+library(brms)
+library(dplyr)
 
+#--- 1. Simulate full posterior predictions (data scale, includes ZOIB mixture) ---
+y_sim <- posterior_predict(mod_consistency)   # draws x N matrix
+var_total <- apply(y_sim, 1, var)
 
+#--- 2. Simulate expected values keeping only the animal random effect active ---
+mu_animal <- posterior_epred(
+  mod_consistency,
+  re_formula = ~ (1 | animalID_fct)           # include animal RE only
+)
+# average predictions within animal for each draw
+id_index <- split(seq_len(ncol(mu_animal)), mod_consistency$data$animalID_fct)
+var_between <- apply(mu_animal, 1, function(row_pred) {
+  id_means <- vapply(id_index, function(ix) mean(row_pred[ix]), numeric(1))
+  var(id_means)
+})
+
+#--- 3. Data-scale repeatability ---
+R_draws <- var_between / var_total
+
+#--- 4. Summarise posterior ICC ---
+R_summary <- c(
+  median = median(R_draws),
+  l95 = quantile(R_draws, 0.025),
+  u95 = quantile(R_draws, 0.975)
+)
+R_summary
+
+mu_draws <- posterior_epred(mod_consistency, re_formula = ~ (1 | animalID_fct))
+
+# Summarise across posterior draws for each individual
+animal_means <- apply(mu_draws, 2, mean)
+animal_sds   <- apply(mu_draws, 2, sd)
+
+summary_df <- data.frame(
+  animalID_fct = mod_consistency$data$animalID_fct,
+  mean_pred = animal_means,
+  sd_pred = animal_sds
+) %>%
+  group_by(animalID_fct) %>%
+  summarise(
+    mean_pred = mean(mean_pred),
+    sd_pred = mean(sd_pred)
+  )
+ggplot(summary_df, aes(x = reorder(animalID_fct, mean_pred),
+                       y = mean_pred, fill = sd_pred)) +
+  geom_col() +
+  scale_fill_gradient(low = "lightblue", high = "navy",
+                      name = "Predicted SD\n(Within-animal)") +
+  coord_flip() +
+  labs(x = "Animal ID", y = "Predicted proportion (mean)",
+       title = "Per-animal mean proportion and within-animal variability") +
+  theme_minimal()
+
+VarCorr(mod_consistency, dpar = "phi")
+
+phi_ranef <- ranef(mod_consistency, dpar = "phi")$animalID_fct[,, "Intercept"]
+
+phi_summary <- data.frame(
+  animalID = rownames(phi_ranef),
+  mean_phi = phi_ranef[, "Estimate"],
+  l95 = phi_ranef[, "Q2.5"],
+  u95 = phi_ranef[, "Q97.5"]
+) %>%
+  arrange(desc(mean_phi))
+summary_df <- left_join(summary_df, phi_summary, by = c("animalID_fct" = "animalID"))
+
+ggplot(summary_df, aes(x = mean_pred, y = mean_phi)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Mean predicted proportion",
+       y = "Mean posterior φ (precision)",
+       title = "Are high-proportion individuals also more consistent?")
+
+summary_df$phi_exp <- exp(summary_df$mean_phi)
+ggplot(summary_df, aes(x = mean_pred, y = phi_exp)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Mean predicted proportion",
+       y = "Exp(mean posterior φ) [precision]",
+       title = "High mean proportions correspond to higher precision (lower variability)")
+phi_summary <- data.frame(
+  animalID_fct = rownames(phi_ranef),
+  mean_phi_log = phi_ranef[, "Estimate"],
+  l95_phi_log  = phi_ranef[, "Q2.5"],
+  u95_phi_log  = phi_ranef[, "Q97.5"]
+) %>%
+  mutate(
+    # transform from log to natural (positive) scale
+    mean_phi = exp(mean_phi_log),
+    l95_phi  = exp(l95_phi_log),
+    u95_phi  = exp(u95_phi_log)
+  )
+ggplot(phi_summary, aes(
+  x = reorder(animalID_fct, mean_phi),
+  y = mean_phi
+)) +
+  geom_pointrange(aes(ymin = l95_phi, ymax = u95_phi),
+                  color = "navy", alpha = 0.7) +
+  coord_flip() +
+  labs(
+    x = "Animal ID",
+    y = "Precision parameter φ (posterior mean ± 95% CrI)",
+    title = "Within-individual precision (consistency) across animals"
+  ) +
+  theme_minimal()
+
+cv_phi <- sd(phi_summary$mean_phi) / mean(phi_summary$mean_phi)
+cv_phi
