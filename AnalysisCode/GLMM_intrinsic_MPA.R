@@ -1,4 +1,6 @@
 
+source("./DataCurationCode/Data_processing_MPA.R") ##do the source code from Data Processing
+
 ######################## Piecewise binomial 1996 - 2025 ##################################
 
 ##Setting senescence threshold at 11 (Allison paper!)
@@ -171,6 +173,11 @@ intrinsic_2016_2025 <- intrinsic_variables %>%
 ##Drop levels from the model with all years!
 intrinsic_2016_2025 <- intrinsic_2016_2025 %>% droplevels()
 
+##Add harem density data for 2016-2025
+intrinsic_2016_2025 <- intrinsic_2016_2025 %>%
+  left_join(harem_assignment, by = c("animalID", "season")) %>%
+  left_join(area_density, by = c("area", "season"))
+
 ##Histogram of filtered data's proportions
 ggplot(data = intrinsic_2016_2025, aes(x = proportion)) +
   geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
@@ -187,7 +194,7 @@ intrinsic_2016_2025 <- intrinsic_2016_2025 %>%
   mutate(age10 = (AgeYears - age_senesce) / 10) #scaled numeric version of Age centered at senescence threshold
 
 ##Piecewise model with season and animalID pre- and post- senescent threshold for 2016-2025- lowest AIC + good residuals
-mod_piecewise_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | season_fct) + (1 | animalID_fct),
+mod_piecewise_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + avg_density + age_last_seen + total_resights + (1 | season_fct) + (1 | animalID_fct),
                                      family = binomial(link = "logit"),
                                      data = intrinsic_2016_2025)
 summary(mod_piecewise_2016_2025)
@@ -287,12 +294,14 @@ ggplot(pred_grid_2016_2025, aes(x = AgeYears, y = predicted, color = age_cat, fi
 
 ##Subset the data for years 2016-2025
 intrinsic_variables_sub_2016_2025 <- intrinsic_variables_sub %>%
-  filter(season >= 2016)
+  filter(season >= 2016) %>%
+  left_join(harem_assignment, by = c("animalID", "season")) %>%
+  left_join(area_density, by = c("area", "season"))
 
 ##Compare models with combinations of random effects for AIC
 
 ##Model with animalID and season
-mod_piecewise_gamma_2016_2025_both <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
+mod_piecewise_gamma_2016_2025_both <- glmmTMB(flipped_prop ~ age10 : age_cat + avg_density + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
                                          family = Gamma(link = "log"),
                                          data = intrinsic_variables_sub_2016_2025)
 summary(mod_piecewise_gamma_2016_2025_both)

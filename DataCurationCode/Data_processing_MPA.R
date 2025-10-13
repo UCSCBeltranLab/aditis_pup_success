@@ -14,12 +14,12 @@ library(ggthemes)
 library(RColorBrewer)
 
 ################################ Creating proportion MPA and intrinsic variables ###############################
-##setwd
-setwd("/Users/aditimary/Documents/aditis_pup_success/RawData")
+
+##take away the set working directory
 
 ##read both csvs!
-raw_data <- read.csv("Aditi 2024 Data Pull 2025_04_17_RAW.csv")
-summarized_data <- read.csv("Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
+raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv")
+summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
 
 ##raw data
 raw_data <- raw_data %>%
@@ -223,12 +223,14 @@ tide_data_all <- tide_files %>%
 ##fit tide data to specific breeding seasons
 tide_data_all <- tide_data_all %>%
   mutate(
-    Date = as.Date(Date),
+    Date = as.Date(as.character(Date)),
     MM = lubridate::month(Date),
     YY = lubridate::year(Date),
     season = case_when(
-      MM == 12 ~ YY + 1, #December belongs to next year's season
-      MM %in% c(1, 2, 3) ~ YY))  #Jan–Mar stay in current year
+      MM == 12 ~ YY + 1,
+      MM %in% c(1, 2, 3) ~ YY
+    )
+  )
 
 ##select necessary columns from the tide data
 tide_data_clean <- tide_data_all %>%
