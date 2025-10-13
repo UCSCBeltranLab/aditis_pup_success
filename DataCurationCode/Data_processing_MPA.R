@@ -16,10 +16,12 @@ library(RColorBrewer)
 ################################ Creating proportion MPA and intrinsic variables ###############################
 ##setwd
 setwd("/Users/aditimary/Documents/aditis_pup_success/RawData")
+#For Maddie to setwd 
+setwd("~/Documents/PhD Documents/aditis_pup_success")
 
 ##read both csvs!
-raw_data <- read.csv("Aditi 2024 Data Pull 2025_04_17_RAW.csv")
-summarized_data <- read.csv("Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
+raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv")
+summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
 
 ##raw data
 raw_data <- raw_data %>%

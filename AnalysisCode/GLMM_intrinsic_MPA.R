@@ -1,6 +1,10 @@
+###Source from data processing 
 
-######################## Piecewise binomial 1996 - 2025 ##################################
+source("./DataCurationCode/Data_processing_MPA.R")
 
+ 
+######################## Piecewise binomial 1996 - 2025 ################################## -- try gamma model as poisson w/ offset, maybe add density into intrinsic variable
+#1 model for all years for intrinsic, do intrinsic w/ harem density (make sure these are consistent), and then do full years for wave/tide/extreme events (with area because harem choice with density as the thresholds for the extrinsic choice)
 ##Setting senescence threshold at 11 (Allison paper!)
 age_senesce <- 11
 
@@ -65,23 +69,36 @@ pred_season <- ggpredict(
   filter((age_cat == "Young" & AgeYears < age_senesce) | (age_cat == "Old" & AgeYears >= age_senesce))
 
 ##Need a prediction grid to visualize the Age effect
+## --- Clean up main dataset once ---
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(
+    AgeYears = as.numeric(AgeYears),
+    age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                     levels = c("Young", "Old")),
+    age10 = (AgeYears - age_senesce) / 10
+  )
+
+## --- Build prediction grid (uses same definitions) ---
 pred_grid <- expand.grid(
   AgeYears = 3:22,
-  season_fct = levels(intrinsic_variables$season_fct)) %>%
-  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
-                          levels = c("Young", "Old")),
-         age10 = (AgeYears - age_senesce) / 10,
-         total_resights = mean(intrinsic_variables$total_resights),
-         age_last_seen = mean(intrinsic_variables$age_last_seen))
+  season_fct = levels(intrinsic_variables$season_fct)
+) %>%
+  mutate(
+    age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                     levels = c("Young", "Old")),
+    age10 = (AgeYears - age_senesce) / 10,
+    total_resights = mean(intrinsic_variables$total_resights, na.rm = TRUE),
+    age_last_seen = mean(intrinsic_variables$age_last_seen, na.rm = TRUE)
+  )
 
 seal_years <- intrinsic_variables %>%
   count(season_fct)
 
 ##Make predictions
 pred_grid <- pred_grid %>%
-  mutate(pred_logit = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NULL),
-         se_logit = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NA, se.fit = TRUE)$se.fit,
-         pred_fixed = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NA)) %>%
+  mutate(pred_logit = predict(mod_piecewise_season, newdata = pred_grid, re.form = NULL),
+         se_logit = predict(mod_piecewise_season, newdata = pred_grid, re.form = NA, se.fit = TRUE)$se.fit,
+         pred_fixed = predict(mod_piecewise_season, newdata = pred_grid, re.form = NA)) %>%
   mutate(conf_lo = pred_logit - 1.96 * se_logit, 
          conf_hi = pred_logit + 1.96 * se_logit) %>%
   left_join(seal_years, by = "season_fct") %>%
@@ -132,7 +149,17 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
 
 ############################ Piecewise gamma model 1996-2025 ####################################
 
-##Trying multiple versions of the same model to compare AIC
+##Trying multiple versions of the same model to compare AI
+intrinsic_variables_sub <- intrinsic_variables %>%
+  filter(proportion < 1) %>%
+  mutate(
+    AgeYears = as.numeric(AgeYears),
+    age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                     levels = c("Young", "Old")),
+    age10 = (AgeYears - age_senesce) / 10,
+    total_resights = total_resights,
+    age_last_seen = age_last_seen
+  )
 
 ##Lowest AIC and best residuals
 mod_piecewise_gamma_all <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct) + (1 | year_born_fct),
