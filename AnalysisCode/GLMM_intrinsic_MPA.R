@@ -12,10 +12,15 @@ mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
        levels = c("Young", "Old"))) %>%
 mutate(age10 = (AgeYears - age_senesce) / 10) #scaled numeric version of Age centered at senescence threshold
 
+#Make year_born continuous so we can scale and add as a fixed effect 
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(year_born_cont = as.numeric(year_born_fct))
+
 ##trying multiple versions of random effects to compare AIC
+#NOTE FROM MADDIE: I would stick with the third model (year_born as a numeric fixed effect), which seems to allow for year born & animalID to be controlled for 
 
 ##Piecewise model with only season- lowest AIC
-mod_piecewise_season <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | season_fct),
+mod_piecewise_season <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + scale(year_born_cont) + (1 | season_fct),
                                      family = binomial(link = "logit"),
                                      data = intrinsic_variables)
 summary(mod_piecewise_season)
@@ -25,26 +30,26 @@ DHARMa::simulateResiduals(mod_piecewise_season, plot = TRUE)
 check_collinearity(mod_piecewise_season)
 
 ##Piecewise model with year born and season
-mod_piecewise_yrborn_season <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | year_born_fct) + (1 | season_fct), 
-                                   family = binomial(link = "logit"), 
-                                   data = intrinsic_variables)
-summary(mod_piecewise_yrborn_season)
-exp(fixef(mod_piecewise_yrborn_season)$cond) 
-DHARMa::simulateResiduals(mod_piecewise_yrborn_season, plot = TRUE)
+#mod_piecewise_yrborn_season <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | year_born_fct) + (1 | season_fct), 
+#                                   family = binomial(link = "logit"), 
+#                                   data = intrinsic_variables)
+#summary(mod_piecewise_yrborn_season)
+#exp(fixef(mod_piecewise_yrborn_season)$cond) 
+#DHARMa::simulateResiduals(mod_piecewise_yrborn_season, plot = TRUE)
 #residuals look a bit worse than above model
-check_collinearity(mod_piecewise_yrborn_season)
+#check_collinearity(mod_piecewise_yrborn_season)
 
 ##Piecewise model with animalID, season, year_born
-mod_piecewise_all <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct) + (1 | year_born_fct),
+mod_piecewise_all <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + scale(year_born_cont) + (1 | animalID_fct) + (1 | season_fct),
                              family = binomial(link = "logit"),
                              data = intrinsic_variables)
 summary(mod_piecewise_all)
 exp(fixef(mod_piecewise_all)$cond) 
-DHARMa::simulateResiduals(mod_piecewise_all, plot = TRUE)
-#residuals look good here too
-check_collinearity(mod_piecewise_all)
+DHARMa::simulateResiduals(mod_piecewise_all, plot = TRUE) #Slight deviation in residuals (check dispersion)
+DHARMa::testDispersion(DHARMa::simulateResiduals(mod_piecewise_all)) #No effect of over/under dispersion, which means we can ignore slight deviance in model quantiles!
+check_collinearity(mod_piecewise_all) # <-- I would keep this one and comment out/remove the others!
 
-##Visualizing and plotting the effects!
+##Visualizing and plotting the effects! -- Note from Maddie: I adjusted this code to be the same _all model as I suggested to keep above and it seems to have the same result 
 
 ##A table for raw observed proportion to overlay on plot
 observed_data <- intrinsic_variables %>%
@@ -57,7 +62,7 @@ observed_data <- intrinsic_variables %>%
 
 ##Create ANNUAL (i.e. rand effect of season only) predictions
 pred_season <- ggpredict(
-  mod_piecewise_season, 
+  mod_piecewise_all, 
   terms = c("age10 [all]", "age_cat", "season_fct"),
   type = "random") %>% 
   as_tibble() %>% 
@@ -69,21 +74,26 @@ pred_season <- ggpredict(
 ##Need a prediction grid to visualize the Age effect
 pred_grid <- expand.grid(
   AgeYears = 3:22,
-  season_fct = levels(intrinsic_variables$season_fct)) %>%
-  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
-                          levels = c("Young", "Old")),
-         age10 = (AgeYears - age_senesce) / 10,
-         total_resights = mean(intrinsic_variables$total_resights),
-         age_last_seen = mean(intrinsic_variables$age_last_seen))
+  season_fct = levels(intrinsic_variables$season_fct),
+  animalID_fct = NA  # placeholder since we won't predict per individual
+) %>%
+  mutate(
+    age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                     levels = c("Young", "Old")),
+    age10 = (AgeYears - age_senesce) / 10,
+    total_resights = mean(intrinsic_variables$total_resights, na.rm = TRUE),
+    age_last_seen = mean(intrinsic_variables$age_last_seen, na.rm = TRUE),
+    year_born_cont = mean(intrinsic_variables$year_born_cont, na.rm = TRUE)
+  )
 
 seal_years <- intrinsic_variables %>%
   count(season_fct)
 
 ##Make predictions
 pred_grid <- pred_grid %>%
-  mutate(pred_logit = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NULL),
-         se_logit = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NA, se.fit = TRUE)$se.fit,
-         pred_fixed = predict(mod_piecewise_only_season, newdata = pred_grid, re.form = NA)) %>%
+  mutate(pred_logit = predict(mod_piecewise_all, newdata = pred_grid, re.form = NULL),
+         se_logit = predict(mod_piecewise_all, newdata = pred_grid, re.form = NA, se.fit = TRUE)$se.fit,
+         pred_fixed = predict(mod_piecewise_all, newdata = pred_grid, re.form = NA)) %>%
   mutate(conf_lo = pred_logit - 1.96 * se_logit, 
          conf_hi = pred_logit + 1.96 * se_logit) %>%
   left_join(seal_years, by = "season_fct") %>%
@@ -124,7 +134,7 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
   
   #Formatting, colors
   geom_vline(xintercept = age_senesce - 0.5, linetype = "dashed") +
-  scale_y_continuous(n.breaks = 5) +
+  scale_y_continuous(n.breaks = 5) + 
   scale_x_continuous(n.breaks = 20) +
   scale_color_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
   scale_fill_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
@@ -136,15 +146,49 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
 
 ##Trying multiple versions of the same model to compare AIC
 
+##Added this to make intrinsic_variables_sub compatible for everything! 
+
+## FROM MADDIE: Make sure to keep only the scale(year_born) as fixed effect model here too (adjust these models) - delete/comment out the rest
+
+intrinsic_variables_sub <- intrinsic_variables_sub %>%
+  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                          levels = c("Young", "Old"))) %>%
+  mutate(age10 = (AgeYears - age_senesce) / 10) %>%
+  left_join(harem_assignment, by = c("animalID", "season")) ### we need avg_density here merged w/ intrinsic data to add avg_density here
+
+#Make year_born continuous so we can scale and add as a fixed effect 
+intrinsic_variables_sub <- intrinsic_variables_sub %>%
+  mutate(year_born_cont = as.numeric(year_born_fct))
+
 ##Lowest AIC and best residuals
-mod_piecewise_gamma_all <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct) + (1 | year_born_fct),
+mod_piecewise_gamma_all <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + scale(year_born_cont) + (1 | animalID_fct) + (1 | season_fct),
                                family = Gamma(link = "log"),
-                               data = intrinsic_variables_sub)
+                               data = intrinsic_variables_sub) ##Aditi : See comment above, add avg_density
 summary(mod_piecewise_gamma_all)
 exp(fixef(mod_piecewise_gamma_all)$cond) 
 DHARMa::simulateResiduals(mod_piecewise_gamma_all, plot = TRUE)
 #residuals look not the best but fine
 check_collinearity(mod_piecewise_gamma_all)
+
+
+intrinsic_variables_sub <- intrinsic_variables_sub %>%
+  mutate(
+    flipped_prop_trans = car::logit(flipped_prop, adjust = 0.001)
+  )
+
+## I would recommend this one! It can handle 0s which gamma is bad at, but we can keep the gamma as a sensitivty test 
+mod_gauss <- glmmTMB(
+  flipped_prop_trans ~ age10:age_cat + age_last_seen + scale(year_born_cont) +
+    (1 | animalID_fct) + (1 | season_fct),
+  family = gaussian(),
+  data = intrinsic_variables_sub
+)
+summary(mod_gauss)
+exp(fixef(mod_gauss)$cond) 
+DHARMa::simulateResiduals(mod_gauss, plot = TRUE)
+check_collinearity(mod_gauss)
+
+###I think either stick with the gaussian one above here or the gamma, and delete/comment out the ones below 
 
 mod_piecewise_gamma_two <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
                                    family = Gamma(link = "log"),
@@ -191,10 +235,11 @@ ggplot(data = intrinsic_2016_2025, aes(x = proportion)) +
 intrinsic_2016_2025 <- intrinsic_2016_2025 %>%
   mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
                           levels = c("Young", "Old"))) %>%
-  mutate(age10 = (AgeYears - age_senesce) / 10) #scaled numeric version of Age centered at senescence threshold
-
+  mutate(age10 = (AgeYears - age_senesce) / 10)  %>%   #scaled numeric version of Age centered at senescence threshold 
+  mutate(year_born_cont = as.numeric(year_born_fct))
+  
 ##Piecewise model with season and animalID pre- and post- senescent threshold for 2016-2025- lowest AIC + good residuals
-mod_piecewise_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + avg_density + age_last_seen + total_resights + (1 | season_fct) + (1 | animalID_fct),
+mod_piecewise_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + avg_density + age_last_seen + total_resights + scale(year_born_cont) + (1 | season_fct) + (1 | animalID_fct),
                                      family = binomial(link = "logit"),
                                      data = intrinsic_2016_2025)
 summary(mod_piecewise_2016_2025)
@@ -204,6 +249,7 @@ DHARMa::simulateResiduals(mod_piecewise_2016_2025, plot = TRUE)
 check_collinearity(mod_piecewise_2016_2025)
 
 ##A table for raw observed proportion to overlay on plot
+#FROM MADDIE: Please adjust prediction graphs w/ new fixed effect 
 observed_data_2016_2025 <- intrinsic_2016_2025 %>%
   group_by(AgeYears) %>%
   summarize(n = n(),
@@ -292,6 +338,10 @@ ggplot(pred_grid_2016_2025, aes(x = AgeYears, y = predicted, color = age_cat, fi
 
 ############################# Piecewise gamma model 2016-2025 #####################################
 
+#Maddie's notes from here: 
+#Check out gamma vs. gaussian here (I would once again recommend the transformed gaussian model if histogram looks good)
+#Add year_born fixed effect here as done above!
+
 ##Subset the data for years 2016-2025
 intrinsic_variables_sub_2016_2025 <- intrinsic_variables_sub %>%
   filter(season >= 2016) %>%
@@ -319,3 +369,173 @@ exp(fixef(mod_piecewise_gamma_2016_2025_ID_only)$cond)
 DHARMa::simulateResiduals(mod_piecewise_gamma_2016_2025_ID_only, plot = TRUE)
 #residuals look ok
 check_collinearity(mod_piecewise_gamma_2016_2025_ID_only)
+
+
+
+
+######### MADDIE PLAYING WITH CONSISTENCY STUFF ############
+
+library(rptR)
+
+young_data <- intrinsic_variables %>% filter(age_cat == "Young")
+old_data   <- intrinsic_variables %>% filter(age_cat == "Old")
+
+young_data_sub <- intrinsic_variables_sub %>% filter(age_cat == "Young")
+old_data_sub   <- intrinsic_variables_sub %>% filter(age_cat == "Old")
+
+##Population-level repeatability calculations 
+
+# Repeatability for ALL individuals from all years, for is_one binomial 
+rpt_all <- rptBinary(
+  is_one ~ age10 + age_last_seen + total_resights +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = intrinsic_variables,
+  link     = "logit",
+  nboot    = 1000,
+  npermut  = 0
+)
+summary(rpt_all)
+
+rpt_young <- rptBinary(
+  is_one ~ age10 + age_last_seen + total_resights +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = young_data,
+  link     = "logit",
+  nboot    = 1000,
+  npermut  = 0
+)
+summary(rpt_young)
+
+# Repeatability for old individuals from all years, for is_one binomial 
+rpt_old <- rptBinary(
+  is_one ~ age10 + age_last_seen + total_resights +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = old_data,
+  link     = "logit",
+  nboot    = 1000,
+  npermut  = 0
+)
+summary(rpt_old)
+
+#Repeatability for ALL individuals, all years, for between 0 and 1 
+rpt_sub_all <- rpt(
+  flipped_prop_trans ~ age10 + age_last_seen + total_resights + scale(year_born_cont) +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = intrinsic_variables_sub,
+  datatype = "Gaussian",
+  nboot    = 1000,
+  npermut  = 0
+)
+
+summary(rpt_sub_all)
+
+rpt_young_sub <- rpt(
+  flipped_prop_trans ~ age10 + age_last_seen + total_resights + scale(year_born_cont) +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = young_data_sub,
+  datatype = "Gaussian",
+  nboot    = 1000,
+  npermut  = 0
+)
+
+summary(rpt_young_sub)
+
+#Repeatability for old individuals, all years, for between 0 and 1 
+rpt_old_sub <- rpt(
+  flipped_prop_trans ~ age10 + age_last_seen + total_resights + scale(year_born_cont) +
+    (1 | animalID_fct) + (1 | season_fct),
+  grname   = "animalID_fct",
+  data     = old_data_sub,
+  datatype = "Gaussian",
+  nboot    = 1000,
+  npermut  = 0
+)
+
+summary(rpt_old_sub)
+
+season_level <- Proportion_MPA %>%                 # has animalID, season, count_1_pup, total_resights
+  mutate(proportion = count_1_pup / total_resights) %>%
+  left_join(metadata %>% select(animalID, season, AgeYears),
+            by = c("animalID","season")) %>%
+  mutate(
+    animalID_fct = factor(animalID),
+    season_fct   = factor(season)
+  )
+
+# helper for weighted variance
+wvar <- function(x, w) {
+  w <- w / sum(w)
+  mu <- sum(w * x)
+  sum(w * (x - mu)^2)
+}
+
+individual_consistency <- season_level %>%
+  group_by(animalID_fct) %>%
+  summarise(
+    n_seasons   = n(),
+    n_obs_total = sum(total_resights),
+    mean_assoc  = weighted.mean(proportion, w = total_resights, na.rm = TRUE),     # preserves direction
+    sd_assoc    = sqrt(wvar(proportion, w = total_resights)),                       # variability across seasons
+    frac_zero   = mean(proportion == 0),
+    frac_one    = mean(proportion == 1),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    consistency = pmax(pmin(1 - (sd_assoc / 0.5), 1), 0)   # 0–1, higher = more consistent
+  ) %>%
+  filter(n_seasons >= 2)
+
+ggplot(individual_consistency,
+       aes(x = mean_assoc, y = consistency)) +
+  geom_point(aes(size = n_obs_total), alpha = 0.75) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = 0.8, linetype = "dashed", color = "grey60") +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_size_continuous(name = "Total resights\n(per individual)") +
+  labs(
+    x = "Mean maternal association (0–1, directional)",
+    y = "Consistency (1 − SD/0.5)",
+    title = "Individual-level direction and consistency (keeps 0’s and 1’s)"
+  ) +
+  theme_minimal(base_size = 14)
+
+individual_consistency <- individual_consistency %>%
+  mutate(strategy = case_when(
+    mean_assoc <= 0.2 & consistency >= 0.8 ~ "Non-maternal specialist",
+    mean_assoc >= 0.8 & consistency >= 0.8 ~ "Maternal specialist",
+    consistency < 0.8 ~ "Plastic",
+    TRUE ~ "Intermediate specialist"
+  ))
+
+ggplot(individual_consistency,
+       aes(x = mean_assoc, y = consistency, color = strategy)) +
+  geom_point(aes(size = n_obs_total), alpha = 0.8) +
+  geom_vline(xintercept = c(0.2, 0.8), linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = 0.8, linetype = "dashed", color = "grey60") +
+  scale_color_manual(values = c(
+    "Maternal specialist" = "#1f78b4",
+    "Non-maternal specialist" = "#e31a1c",
+    "Plastic" = "#ff7f00",
+    "Intermediate specialist" = "#66C2A5"
+  )) +
+  scale_size_continuous(name = "Total resights\n(per individual)", range = c(2,10)) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  labs(
+    x = "Mean maternal association (0–1)",
+    y = "Consistency (0–1)",
+    color = "Behavioral strategy",
+    title = "Individual consistency and maternal behavior strategy"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    legend.box = "vertical",
+    legend.title = element_text(face = "bold")
+  )

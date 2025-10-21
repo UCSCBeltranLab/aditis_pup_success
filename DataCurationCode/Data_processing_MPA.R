@@ -88,7 +88,7 @@ metadata <- metadata %>%
 
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
-  select(animalID, season, AgeYears, BirthDate, year_born, proportion, total_resights) %>%
+  select(animalID, season, AgeYears, BirthDate, year_born, proportion, total_resights, count_1_pup) %>%
   distinct() %>% #eliminate the metadata multiple rows; we only need one per animalID per season
   filter(!is.na(proportion), proportion > 0) %>% #eliminate NA and 0s for proportion
   mutate(BirthDate = as.Date(BirthDate)) %>%
@@ -359,7 +359,7 @@ extrinsic_harem <- metadata_filtered %>%
   filter(!is.na(proportion), proportion > 0) %>%
   left_join(harem_assignment, by = c("animalID", "season")) %>%
   left_join(area_density, by = c("area", "season")) %>%
-  mutate(is_one = as.numeric(proportion == 1))
+  mutate(is_one = as.numeric(proportion == 1)) 
 
 ##check whether there are ties for assigned harems
 harem_duplicates <- extrinsic_harem %>%
