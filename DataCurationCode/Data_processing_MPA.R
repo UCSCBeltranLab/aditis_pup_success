@@ -94,6 +94,7 @@ intrinsic_variables <- metadata %>%
   mutate(BirthDate = as.Date(BirthDate)) %>%
   group_by(animalID) %>%  
   mutate(year_born_fct = factor(year_born), #make year_born a factor in separate column
+         year_born_num = as.numeric(year_born_fct), #numeric year_born allows it to be included in the model
          animalID_fct = factor(animalID), #make animalID a factor in separate column
          season_fct = factor(season),
          age_last_seen = max(AgeYears), #calculate age at last observation
@@ -184,6 +185,15 @@ ggplot(data = intrinsic_variables, aes(x = year_born_fct, y = proportion)) +
 
 ######################## Modifying intrinsic variables needed for the model approach ############################
 
+##Setting senescence threshold at 11 (Allison paper!)
+age_senesce <- 11
+
+##Setting threshold in data
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                          levels = c("Young", "Old"))) %>%
+  mutate(age10 = (AgeYears - age_senesce) / 10) #scaled numeric version of Age centered at senescence threshold
+
 ##first, modify intrinsic_variables so it has a column for proportion = 1 (1) OR not 1 (0)
 intrinsic_variables <- intrinsic_variables %>%
   mutate(is_one = as.numeric(proportion == 1))
@@ -196,6 +206,10 @@ intrinsic_variables_sub <- intrinsic_variables %>%
 flipped_prop <- max(intrinsic_variables_sub$proportion) - intrinsic_variables_sub$proportion #subtract all proportions from the maximum
 flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
 intrinsic_variables_sub$flipped_prop <- flipped_prop
+
+##create a version of transformed flipped prop for Gaussian model
+intrinsic_variables_sub <- intrinsic_variables_sub %>%
+  mutate(prop_trans = car::logit(proportion, adjust = 0.001))
 
 ##histogram of flipped proportion
 ggplot(data = intrinsic_variables_sub, aes(x = flipped_prop)) +
@@ -293,7 +307,7 @@ tide_wave <- left_join(wave_data_clean, tide_data_clean, by = c("wave_datetime" 
   filter(!is.na(`Verified (ft)`)) #make sure there are no NAs for tide height
 
 ##set extreme wave and tide threshold levels
-extreme_wave_threshold <- 30 #30 Kw/h
+extreme_wave_threshold <- 30 #30 kW/m
 extreme_tide_threshold <- 6 #6 ft  
 
 ##flag cases where both wave power and tide were extreme
@@ -308,8 +322,8 @@ tide_wave_flagged <- tide_wave %>%
 
 ##plot extreme tide and wave events per season
 ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
-  geom_line(linewidth = 1.2) +
-  geom_point() +
+  geom_line(linewidth = 1.2, color = "#1f78b4") +
+  geom_point(color = "darkblue") +
   labs(title = "Extreme Tide and Storm Events (1996–2025)",
        x = "Year", y = "Number of Extreme Events") +
   theme_minimal()
@@ -317,7 +331,7 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
 ############################# Harem density #################################
 
 ##seal density csv read
-seal.density <- read.csv("seal.density.csv")
+seal.density <- read.csv("./RawData/seal.density.csv")
 
 ##avg area density calculation
 area_density <- seal.density %>%
