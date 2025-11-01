@@ -78,6 +78,41 @@ ggplot(consistency_data, aes(x = animalID_fct, y = proportion, fill = sd_proport
   labs(x = "Animal ID", y = "Proportion") +
   theme(axis.text.x = element_text(angle = 90, size = 6))
 
+# Join consistency info to your plotting data
+plot_data <- consistency_data %>%
+  left_join(individual_consistency %>% select(animalID_fct, consistency, sd_assoc),
+            by = "animalID_fct") %>%
+  # Reorder factor levels by consistency (ascending or descending as you prefer)
+  mutate(animalID_fct = fct_reorder(animalID_fct, consistency, .desc = TRUE))
+
+# Now make the plot
+ggplot(plot_data, aes(x = animalID_fct, y = proportion, fill = consistency)) +
+  geom_boxplot(width = 0.7, outlier.size = 1.5, outlier.color = "black") +
+  geom_jitter(size = 1, alpha = 0.6, color = "#04BBB2") +
+  scale_fill_gradient(low = "#D8FFF7", high = "#073481", name = "Individual consistency score") +
+  coord_cartesian(ylim = c(0, 1.1)) +
+  scale_y_continuous(n.breaks = 10) +
+  theme_few() +
+  labs(x = "Animal ID (ordered by consistency)", y = "Proportion") +
+  theme(axis.text.x = element_text(angle = 90, size = 6)) +
+  # Add consistency values below x labels
+  geom_text(data = distinct(plot_data, animalID_fct, consistency),
+            aes(x = animalID_fct, y = -0.05, label = sprintf("%.2f", consistency)),
+            inherit.aes = FALSE, size = 2.5, color = "grey30") +
+  expand_limits(y = -0.1)
+
+# Plot: Consistency on X-axis
+ggplot(plot_data, aes(x = consistency, y = proportion, fill = sd_proportion)) +
+  geom_boxplot(aes(group = cut(consistency, breaks = 20)),  # group by small bins of consistency
+               width = 0.05, outlier.size = 1.5, outlier.color = "black") +
+  geom_jitter(size = 1, alpha = 0.6, color = "#04BBB2") +
+  scale_fill_gradient(low = "#D8FFF7", high = "#073481", name = "SD of Proportion") +
+  coord_cartesian(ylim = c(0, 1.03)) +
+  scale_y_continuous(n.breaks = 10) +
+  theme_few() +
+  labs(x = "Consistency (0 = variable, 1 = stable)", y = "Proportion") +
+  theme(axis.text.x = element_text(size = 8))
+
 ################################ Consistency Model 1 ################################
 library(performance)
 library(glmmTMB)
