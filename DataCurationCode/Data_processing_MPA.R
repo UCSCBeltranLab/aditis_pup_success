@@ -153,9 +153,8 @@ tide_data_all <- tide_data_all %>%
   mutate(Date = as.Date(as.character(Date)),
          MM = lubridate::month(Date),
          YY = lubridate::year(Date),
-         season = case_when(
-           MM == 12 ~ YY + 1,
-           MM %in% c(1, 2, 3) ~ YY))
+         season = case_when(MM == 12 ~ YY + 1,
+                            MM %in% c(1, 2, 3) ~ YY))
 
 ##select necessary columns from the tide data
 tide_data_clean <- tide_data_all %>%
@@ -180,10 +179,9 @@ wave_data_all <- wave_data_all %>%
 
 ##fit wave data to specific breeding seasons
 wave_data_all <- wave_data_all %>%
-  mutate(season = case_when(
-    MM == 12 ~ YY + 1,   #December data assigned to next year's breeding season
-    MM %in% c(1,2,3) ~ YY,  #Jan-Mar data stay in current breeding season
-    TRUE ~ NA_real_))      #Other months not in any breeding season, assign NA
+  mutate(season = case_when(MM == 12 ~ YY + 1, #December data assigned to next year's breeding season
+                            MM %in% c(1,2,3) ~ YY, #Jan-Mar data stay in current breeding season
+                            TRUE ~ NA_real_)) #Other months not in any breeding season, assign NA
 
 ##suppress scientific notation
 options(scipen = 999)
@@ -196,21 +194,19 @@ wave_data_clean <- wave_data_all %>%
 ##need date and time columns to match in tide and wave data
 #cleaned tide data
 tide_data_clean <- tide_data_clean %>%
-  mutate(tide_datetime = as.POSIXct(
-    paste(Date, `Time (GMT)`), #combine date + time
-    format = "%Y-%m-%d %H:%M", #match format
-    tz = "UTC")) #set time zone to UTC
+  mutate(tide_datetime = as.POSIXct(paste(Date, `Time (GMT)`), #combine date + time
+                                    format = "%Y-%m-%d %H:%M", #match format
+                                    tz = "UTC")) #set time zone to UTC
 
 #cleaned wave data
 wave_data_clean <- wave_data_clean %>%
-  mutate(wave_datetime = as.POSIXct(
-    sprintf("%04d-%02d-%02d %02d:00:00", #Format string to create a datetime: "YYYY-MM-DD HH:00:00"
-            YY, #Year (e.g., 2023), zero-padded to 4 digits
-            MM, #Month (e.g., 1 becomes 01), zero-padded to 2 digits
-            DD, #Day of month, zero-padded to 2 digits
-            hh), #Hour (0–23), zero-padded to 2 digits
-    format = "%Y-%m-%d %H:%M:%S", #match format
-    tz = "UTC")) #Set the timezone to UTC
+  mutate(wave_datetime = as.POSIXct(sprintf("%04d-%02d-%02d %02d:00:00", #Format string to create a datetime: "YYYY-MM-DD HH:00:00"
+                                            YY, #Year
+                                            MM, #Month
+                                            DD, #Day of month
+                                            hh), #Hour (0–23)
+                                    format = "%Y-%m-%d %H:%M:%S", #match format
+                                    tz = "UTC")) #Set the timezone to UTC
 
 ##join the data sets by season
 tide_wave <- left_join(wave_data_clean, tide_data_clean, by = c("wave_datetime" = "tide_datetime", "season")) %>%
@@ -295,6 +291,10 @@ area_density <- area_density %>%
 
 ########################### Modifying abiotic variables needed for the model approach ################################
 
+##check location names in the dataset
+unique(abiotic_variables$area)
+
+##create groups for South and North point
 abiotic_variables <- abiotic_variables %>%
   mutate(group = case_when(
     grepl("^N", area_fct) | area_fct %in% c("BBNN", "BBNS", "BBN") ~ "NP",
@@ -314,7 +314,7 @@ flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by ad
 abiotic_variables_sub$flipped_prop <- flipped_prop
 
 
-######################### Plotting general distributions #############################
+######################### Plotting distributions and predictors #############################
 
 ##visualizing sample size is useful for determining stringency
 
@@ -326,7 +326,8 @@ sample_size_per_season <- intrinsic_variables %>%
 ##create a plot for sample size per season
 ggplot(data = sample_size_per_season, aes(x = season, y = sample_size)) +
   geom_bar(stat = "identity", fill = "lightblue") +
-  labs(title = "Sample size for each season", x = "Season", y = "Sample size") +
+  labs(x = "Season", 
+       y = "Sample size") +
   theme_few() + 
   scale_y_continuous(n.breaks = 10)
 
@@ -338,7 +339,8 @@ sample_size_per_age <- intrinsic_variables %>%
 ##create a plot for sample size by age
 ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
   geom_bar(stat = "identity", fill = "lightblue") +
-  labs(title = "Sample Size for each Age", x = "Age", y = "Sample Size") +
+  labs(x = "Age", 
+       y = "Sample Size") +
   theme_few() +
   scale_y_continuous(n.breaks = 10) +
   scale_x_continuous(n.breaks = 20)
@@ -346,8 +348,8 @@ ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
 ##histogram of proportions
 ggplot(data = intrinsic_variables, aes(x = proportion)) +
   geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
-  labs(title = "Histogram of Proportion MPA",
-       x = "Proportion MPA", y = "Frequency") +
+  labs(x = "Proportion MPA", 
+       y = "Frequency") +
   scale_y_continuous(n.breaks = 10) +
   scale_x_continuous(n.breaks = 10) +
   theme_few()
@@ -361,44 +363,37 @@ ggplot(data = intrinsic_variables_sub, aes(x = flipped_prop)) +
   scale_x_continuous(n.breaks = 10) +
   theme_few()
 
-##graph age against proportion
+##plot age against proportion
 ggplot(data = intrinsic_variables, aes(x = AgeYears, y = proportion)) +
   geom_point() +
-  labs(title = "Proportion MPA by Age", x = "Age", y = "MPA") +
+  labs(x = "Age", 
+       y = "Proportion") +
   theme_few()
 
-##graph year born against proportion
+##plot year born against proportion
 ggplot(data = intrinsic_variables, aes(x = year_born_num, y = proportion)) +
   geom_point() +
-  labs(title = "MPA distribution by Year Born", x = "Year Born", y = "Proportion")
+  labs(x = "Year Born", 
+       y = "Proportion")
 
-##graph season against proportion
+##plot season against proportion
 ggplot(data = intrinsic_variables, aes(x = season_fct, y = proportion)) +
   geom_violin(fill = "lightblue", color = "darkblue") +
   geom_jitter(width = 0.1, alpha = 0.5) +
-  labs(title = "MPA distribution by season", x = "Season", y = "Proportion")
+  labs(x = "Season", 
+       y = "Proportion")
 
-##proportion MPA by birth cohort
-ggplot(data = intrinsic_variables, aes(x = factor(year_born), y = proportion)) +
-  geom_boxplot(fill = "skyblue") +
-  labs(
-    x = "Cohort (Year Born)",
-    y = "Proportion Mom–Pup Association",
-    title = "Variation in Mom–Pup Association by Birth Cohort") +
-  theme_minimal()
-
-##year born variation in proportion
+##variation in proportion by yr born
 intrinsic_summary <- intrinsic_variables %>%
   group_by(year_born) %>%
   summarise(mean_prop = mean(proportion, na.rm = TRUE),
-    se = sd(proportion, na.rm = TRUE) / sqrt(n()))
+            conf_int = sd(proportion, na.rm = TRUE) / sqrt(n()))
 
+##plot yr born against mean proportion with CIs
 ggplot(intrinsic_summary, aes(x = year_born, y = mean_prop)) +
   geom_line() +
   geom_point(size = 2) +
-  geom_errorbar(aes(ymin = mean_prop - se, ymax = mean_prop + se), width = 0.2) +
-  labs(
-    x = "Cohort (Year Born)",
-    y = "Mean Proportion Mom–Pup Association",
-    title = "Trend in Mom–Pup Association Across Cohorts") +
+  geom_errorbar(aes(ymin = mean_prop - conf_int, ymax = mean_prop + conf_int), width = 0.2) +
+  labs(x = "Cohort (Year Born)",
+       y = "Mean Proportion Mom–Pup Association") +
   theme_minimal()

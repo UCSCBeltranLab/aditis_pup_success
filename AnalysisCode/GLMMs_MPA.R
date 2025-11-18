@@ -6,8 +6,8 @@ source("./DataCurationCode/Data_processing_MPA.R")
 
 ##Piecewise model with animalID, season, year_born
 mod_binom_1996_2025 <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
-                             family = binomial(link = "logit"),
-                             data = intrinsic_variables)
+                               family = binomial(link = "logit"),
+                               data = intrinsic_variables)
 summary(mod_binom_1996_2025)
 exp(fixef(mod_binom_1996_2025)$cond) 
 DHARMa::simulateResiduals(mod_binom_1996_2025, plot = TRUE) 
@@ -98,20 +98,22 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
   scale_x_continuous(n.breaks = 20) +
   scale_color_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
   scale_fill_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
-  labs(x = "Age (Years)", y = "Probability of 1", color = "Age class", fill = "Age class") +
+  labs(x = "Age (Years)", 
+       y = "Probability of 1", 
+       color = "Age class", 
+       fill = "Age class") +
   theme_few()
 
 ############################ Piecewise gamma model (1996-2025) ####################################
 
 mod_gamma_1996_2025 <- glmmTMB(flipped_prop ~ age10 : age_cat + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
-                                   family = Gamma(link = "log"),
-                                   data = intrinsic_variables_sub)
+                               family = Gamma(link = "log"),
+                               data = intrinsic_variables_sub)
 summary(mod_gamma_1996_2025)
 exp(fixef(mod_gamma_1996_2025)$cond) 
 DHARMa::simulateResiduals(mod_gamma_1996_2025, plot = TRUE)
 DHARMa::testDispersion(DHARMa::simulateResiduals(mod_gamma_1996_2025))
 check_collinearity(mod_gamma_1996_2025)
-
 
 ##################################### Piecewise binomial (2016 - 2025) ########################################
 
@@ -129,16 +131,16 @@ intrinsic_2016_2025 <- intrinsic_2016_2025 %>%
 ##Histogram of filtered data's proportions
 ggplot(data = intrinsic_2016_2025, aes(x = proportion)) +
   geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
-  labs(title = "Histogram of Proportion MPA",
-       x = "Proportion MPA", y = "Frequency") +
+  labs(x = "Proportion MPA", 
+       y = "Frequency") +
   scale_y_continuous(n.breaks = 10) +
   scale_x_continuous(n.breaks = 10) +
   theme_few()
   
 ##Piecewise model for 2016-2025
-mod_binom_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + age_last_seen + avg_density + total_resights + (1 | season_fct) + (1 | animalID_fct),
-                                     family = binomial(link = "logit"),
-                                     data = intrinsic_2016_2025)
+mod_binom_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + avg_density + age_last_seen + total_resights + (1 | season_fct) + (1 | animalID_fct),
+                               family = binomial(link = "logit"),
+                               data = intrinsic_2016_2025)
 summary(mod_binom_2016_2025)
 exp(fixef(mod_binom_2016_2025)$cond)
 DHARMa::simulateResiduals(mod_binom_2016_2025, plot = TRUE)
@@ -230,7 +232,10 @@ ggplot(pred_grid_2016_2025, aes(x = AgeYears, y = predicted, color = age_cat, fi
   scale_x_continuous(n.breaks = 20) +
   scale_color_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
   scale_fill_manual(values = c("Young" = "#66C2A5", "Old" = "#D5A5C9")) +
-  labs(x = "Age (Years)", y = "Probability of 1", color = "Age class", fill = "Age class") +
+  labs(x = "Age (Years)", 
+       y = "Probability of 1", 
+       color = "Age class", 
+       fill = "Age class") +
   theme_few()
 
 ############################# Piecewise gamma model (2016-2025) #####################################
@@ -242,26 +247,45 @@ intrinsic_sub_2016_2025 <- intrinsic_variables_sub %>%
 
 ##Model with animalID and season
 mod_gamma_2016_2025 <- glmmTMB(flipped_prop ~ age_cat : age10 + avg_density + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
-                                         family = Gamma(link = "log"),
-                                         data = intrinsic_sub_2016_2025)
+                               family = Gamma(link = "log"),
+                               data = intrinsic_sub_2016_2025)
 summary(mod_gamma_2016_2025)
 exp(fixef(mod_gamma_2016_2025)$cond) 
 DHARMa::simulateResiduals(mod_gamma_2016_2025, plot = TRUE)
 DHARMa::testDispersion(DHARMa::simulateResiduals(mod_gamma_2016_2025))
 check_collinearity(mod_gamma_2016_2025)
 
-## simple density prediction
-pred_density <- ggpredict(mod_gamma_2016_2025,
-  terms = "avg_density [all]")
+#must fit a simple beta model just to visualize density effect on proportion (unflipped)
+library(betareg)
 
-## simple plot — no flips, no transforms
-ggplot(pred_density, aes(x, predicted)) +
+mod_beta <- betareg(proportion ~ avg_density,
+                    data = intrinsic_sub_2016_2025)
+summary(mod_beta)
+
+pred_density <- ggpredict(mod_beta, terms = "avg_density [all]")
+
+ggplot(data = pred_density, aes(x = x, y = predicted)) +
+  
+  #Raw points
+  geom_point(data = intrinsic_sub_2016_2025,
+             aes(x = avg_density, y = proportion),
+             color = "darkblue",
+             alpha = 0.4,
+             size = 2,
+             inherit.aes = FALSE) +
+  
+  #Confidence ribbon
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
-              alpha = 0.2, fill = "blue") +
-  geom_line(color = "darkblue", linewidth = 1.2) +
-  labs( x = "Average Density",
-        y = "Predicted flipped proportion",
-        title = "Effect of Average Density on Mom–Pup Association") +
+              fill = "skyblue",
+              alpha = 0.3) +
+  
+  #Prediction line (inherits global aes)
+  geom_line(color = "darkblue",
+            linewidth = 1.2) +
+  
+  #Formatting
+  labs(x = "Average Density",
+       y = "Proportion") +
   theme_minimal(base_size = 14)
 
 ##################### Consistency models and figures ###################
@@ -384,7 +408,7 @@ individual_consistency <- season_level %>%
   #Consistency: standardized so that SD = 0 (no variation) → 1, and SD = 0.5 (max) → 0
     consistency = pmax(pmin(1 - (sd_assoc / 0.5), 1), 0)   # 0–1, higher = more consistent
   ) %>%
-  filter(n_seasons >= 2) #require at least two repeated breeding seasons per individual
+  filter(n_seasons >= 3) #require at least two repeated breeding seasons per individual
 
 #Plot consistency across entire dataset
 ggplot(individual_consistency,
@@ -411,17 +435,17 @@ ggplot(individual_consistency,
 
 individual_consistency <- individual_consistency %>%
   mutate(strategy = case_when(
-    mean_assoc <= 0.3 & consistency >= 0.9 ~ "Non-maternal specialist",
-    mean_assoc >= 0.9 & consistency >= 0.9 ~ "Maternal specialist",
-    consistency < 0.9 ~ "Plastic",
+    mean_assoc <= 0.2 & consistency >= 0.8 ~ "Non-maternal specialist",
+    mean_assoc >= 0.8 & consistency >= 0.8 ~ "Maternal specialist",
+    consistency < 0.8 ~ "Plastic",
     TRUE ~ "Intermediate specialist"))
 
 #Plot these strategies with total observations (not season!) in consistency / MPA space 
 ggplot(individual_consistency,
        aes(x = mean_assoc, y = consistency, color = strategy)) +
-  geom_point(aes(size = n_obs_total, alpha = 0.9)) +
-  geom_vline(xintercept = c(0.2, 0.9), linetype = "dashed", color = "grey60") +
-  geom_hline(yintercept = 0.9, linetype = "dashed", color = "grey60") +
+  geom_point(aes(size = n_obs_total, alpha = 0.8)) +
+  geom_vline(xintercept = c(0.2, 0.8), linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = 0.8, linetype = "dashed", color = "grey60") +
   scale_color_manual(values = c(
     "Maternal specialist" = "#1f78b4",
     "Non-maternal specialist" = "#B74F6F",
@@ -451,7 +475,7 @@ star_data <- individual_consistency %>%
   mutate(y_position = max_y + 0.05)
 
 ##boxplot with 2 color gradient for proportion standard deviation 
-ggplot(consistency_data, aes(x = animalID_fct, y = proportion, fill = sd_proportion)) +
+ggplot(individual_consistency, aes(x = animalID_fct, y = proportion, fill = sd_assoc)) +
   geom_boxplot(width = 0.7, outlier.size = 1.5, outlier.color = "black") +
   geom_jitter(size = 1, alpha = 0.6, color = "#04BBB2") +
   scale_fill_gradient(low = "#D8FFF7", high = "#073481", name = "SD of Proportion") +
@@ -459,12 +483,13 @@ ggplot(consistency_data, aes(x = animalID_fct, y = proportion, fill = sd_proport
   coord_cartesian(ylim = c(0, 1.03)) +
   scale_y_continuous(n.breaks = 10) +
   theme_few() +
-  labs(x = "Animal ID", y = "Proportion") +
+  labs(x = "Animal ID", 
+       y = "Proportion") +
   theme(axis.text.x = element_text(angle = 90, size = 6))
 
 ##one row per animal with its consistency
 animal_order <- individual_consistency %>%
-  distinct(animalID_fct, consistency) %>%     # keep unique pair
+  distinct(animalID_fct, consistency) %>%
   arrange(desc(consistency)) %>%
   pull(animalID_fct)
 
@@ -478,16 +503,17 @@ ggplot(individual_consistency, aes(x = animalID_fct, y = proportion, fill = cons
   geom_jitter(size = 1, alpha = 0.6, color = "#04BBB2") +
   scale_fill_gradient(low = "#D8FFF7", high = "#073481",
                       name = "Individual consistency score") +
-  coord_cartesian(ylim = c(0, 1.1)) +
+  coord_cartesian(ylim = c(0, 1)) +
   scale_y_continuous(n.breaks = 10) +
   theme_few() +
-  labs(x = "Animal ID (ordered by consistency)", y = "Proportion") +
+  labs(x = "Animal ID (ordered by consistency)", 
+       y = "Proportion") +
   theme(axis.text.x = element_text(angle = 90, size = 6))
 
 ################# Abiotic binomial and gamma models (1996-2023) ##################
 
 ##binomial model with extreme events per-year and group (SP or NP)
-mod_abiotic_bin <- glmmTMB(is_one ~ n_extreme_both + group + total_resights + (1 | season_fct) + (1 | animalID_fct) + (1 | area_fct),
+mod_abiotic_bin <- glmmTMB(is_one ~ n_extreme_both + group + total_resights + (1 | season_fct) + (1 | animalID_fct),
                            data = abiotic_variables,
                            family = binomial(link = "logit"))
 summary(mod_abiotic_bin)
@@ -497,7 +523,7 @@ DHARMa::testDispersion(DHARMa::simulateResiduals(mod_abiotic_bin))
 check_collinearity(mod_abiotic_bin)
 
 ##gamma model with extreme events per-year and group (SP or NP)
-mod_abiotic_gam <- glmmTMB(flipped_prop ~ n_extreme_both + group + total_resights + (1 | season_fct) + (1 | animalID_fct) + (1 | area_fct),
+mod_abiotic_gam <- glmmTMB(flipped_prop ~ n_extreme_both + group + total_resights + (1 | season_fct) + (1 | animalID_fct),
                            data = abiotic_variables_sub,
                            family = Gamma(link = "log"))
 summary(mod_abiotic_gam)
