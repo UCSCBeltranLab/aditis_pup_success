@@ -109,6 +109,37 @@ intrinsic_variables <- metadata %>%
          BirthDate = format(BirthDate, "%m-%d")) %>% #format BirthDate as month-day
   ungroup()
 
+intrinsic_variables <- intrinsic_variables %>%
+  
+  # Extract month/day
+  mutate(
+    month = as.numeric(substr(BirthDate, 1, 2)),
+    day   = as.numeric(substr(BirthDate, 4, 5))
+  ) %>%
+  
+  # Adjust year for December births
+  mutate(
+    birth_year_adjusted = ifelse(month == 12, season - 1, season)
+  ) %>%
+  
+  # Build proper Date
+  mutate(
+    BirthDate_full = as.Date(
+      paste(birth_year_adjusted, BirthDate, sep = "-"),
+      format = "%Y-%m-%d"
+    ),
+    BirthDate_num = as.numeric(strftime(BirthDate_full, format = "%j"))
+  ) %>%
+  
+  # Compute early vs peak within each season
+  group_by(season_fct) %>%
+  mutate(
+    year_peak = median(BirthDate_num, na.rm = TRUE),
+    birth_cat = ifelse(BirthDate_num < year_peak, "Early", "Peak"),
+    birth_cat = factor(birth_cat, levels = c("Early", "Peak"))
+  ) %>%
+  ungroup()
+
 ######################## Modifying biotic variables needed for the model approach ############################
 
 ##Setting senescence threshold at 11 (Allison paper!)
