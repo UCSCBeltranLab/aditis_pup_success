@@ -16,36 +16,33 @@ library(rptR)
 
 ################################ Calculating MPA and intrinsic data processing ###############################
 
-##take away the set working directory
-
 ##read both csvs!
-raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv")
-summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
+raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv") #Describe: 
+summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv") #Describe: 
 
-##raw data
+#Explain: 
 raw_data <- raw_data %>%
   arrange(animalID) %>%
   group_by(animalID, date) %>%
-  slice_min(order_by = entry, n = 1, with_ties = FALSE) %>%
-  ungroup() #this gets rid of double resights (same animal observed twice on same day)
+  slice_min(order_by = entry, n = 1, with_ties = FALSE) %>% #this gets rid of double resights (same animal observed twice on same day)
+  ungroup() 
 
 ##create a metadata table combining summarized and raw data
 metadata <- summarized_data %>%
   filter(!is.na(BirthDate)) %>% #only known birthdate moms
   filter(Precision <= 7) %>% #precision within a week
   filter(AgeYears <= 24) %>% #removes strange age animals
-  left_join(raw_data, by = c("animalID", "season"))
+  left_join(raw_data, by = c("animalID", "season")) %>%
+  filter(withpup %in% c(0, 1)) #restrict to only values of whether wtihpup score was 0 or 1
 
-##filter for only values of withpup == 1 and 0
-metadata <- metadata %>%
-  filter(withpup %in% c(0, 1))
+### Resight effort and calculating MPA ###
 
-##calculate number of days resighted for each animalID per season
+##calculate number of days resighted for each animalID per season (only post-bith date to standardize across birth timing)
 total_resights <- metadata %>%
   group_by(season, animalID) %>%
   filter(as.Date(date) >= as.Date(BirthDate)) %>% #only count resights after Birth Date
-  summarize(total_resights = n()) %>%
-  filter(total_resights >= 14) #stringency for total resights post-birth
+  summarize(total_resights = n()) %>% #Count total_resights after filtering
+  filter(total_resights >= 14) #stringency for total resights post-birth, justification: 
 
 ##calculate number of times mom was seen with 1 pup
 count_1_pup <- metadata %>% 
@@ -53,47 +50,57 @@ count_1_pup <- metadata %>%
   group_by(animalID, season) %>%
   summarize(count_1_pup = n())
 
-##calculate mom-pup association strength (1s out of total resights)
+##calculate mom-pup association strength:
+#Compute number of with-pup scores of 1 out of entire total resights calculated above 
+#Result: proportion of pup association strength for each female each breeding season (variable = proportion)
 Proportion_MPA <- total_resights %>%
   left_join(count_1_pup, by = c("animalID", "season")) %>%
   mutate(proportion = count_1_pup / total_resights)
 
-##update the metadata with MPA
+##update the metadata to include MPA
 metadata <- metadata %>%
   left_join(Proportion_MPA, by = c("animalID", "season"))
 
-##assign each female to a harem in a given season
+
+### Assigning each female harem locations ###
+
+# 1) Count sightings for each female in each area 
 area_counts <- metadata %>%
   group_by(animalID, season, area) %>%
   summarize(count = n(), .groups = "drop") #count number of times each animal was seen in each area
 
-##for each animal, find the area with the maximum count
+## 2) for each animal, find the area with the maximum count
 harem_assignment <- area_counts %>%
   group_by(animalID, season) %>%
   filter(count == max(count)) %>% #these are assigned areas for each female
   ungroup()
 
-##calculate year born for each female
+### Calculate cohort for each female ###
+
+## Calculate year born for each female
 age_in_first_season <- metadata %>%
+  # Identify each female's first observed season
   group_by(animalID) %>%
   filter(season == min(season)) %>%
   slice(1) %>%
   ungroup() %>%
-  select(animalID, AgeYears, season)
+  select(animalID, AgeYears, season) %>%
+  mutate(
+    # Ensure numeric for explanation: 
+    season  = as.numeric(season),
+    AgeYears = as.numeric(AgeYears)
+  )
 
-##ensure numeric columns before computing
-age_in_first_season <- age_in_first_season %>%
-  mutate(season = as.numeric(season),
-    AgeYears = as.numeric(AgeYears))
-
-## year born = first season seen - Age in that season
+## Year born = first season seen - Age in that season
 year_born <- age_in_first_season %>%
   mutate(year_born = season - AgeYears) %>%
-  select(animalID, year_born)
+  select(animalID, year_born) 
 
 ## update metadata with year_born
 metadata <- metadata %>%
   left_join(year_born, by = "animalID")
+
+### Build final intrinsic table ###
 
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
@@ -164,34 +171,47 @@ flipped_prop <- max(intrinsic_variables_sub$proportion) - intrinsic_variables_su
 flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
 intrinsic_variables_sub$flipped_prop <- flipped_prop
 
-########################### Wave energy and tide data processing #############################
 
-##first, see what the earliest and latest dates are in the breeding season
-##this helps with selecting dates when uploading the wave and tide data
-dates <- metadata %>%
+
+
+
+########################### Wave energy and tide data processing #############################
+##1) Identify seasonal date range: 
+##Calculate earliest and latest dates are in the breeding season
+##Used for: selecting dates when uploading the wave and tide data
+dates <- metadata %>% 
   group_by(season) %>%
   summarize(earliest_date = min(date, na.rm = TRUE), latest_date = max(date, na.rm = TRUE))
 
-##list only CSV files containing "tide" in the filename
+##2) Read in tide data 
+#list only CSV files containing "tide" in the filename
 tide_files <- list.files(path = "./RawData/", pattern = "tide.*\\.csv$", full.names = TRUE)
 
 ##read and combine only those tide data files
-tide_data_all <- tide_files %>%
-  map_dfr(~ read.csv(.x, check.names = FALSE))
-
-##fit tide data to specific breeding seasons
 tide_data_all <- tide_data_all %>%
-  mutate(Date = as.Date(as.character(Date)),
-         MM = lubridate::month(Date),
-         YY = lubridate::year(Date),
-         season = case_when(MM == 12 ~ YY + 1,
-                            MM %in% c(1, 2, 3) ~ YY))
+  mutate(
+    Date = as.Date(as.character(Date)),
+    MM   = lubridate::month(Date),
+    YY   = lubridate::year(Date),
+    # December observations belong to the *following* breeding season;
+    # Jan–Mar belong to the current year’s season.
+    season = dplyr::case_when(
+      MM == 12               ~ YY + 1,
+      MM %in% c(1, 2, 3)     ~ YY,
+      TRUE                   ~ NA_real_
+    )
+  )
 
-##select necessary columns from the tide data
+##select necessary columns from the tide data 
+#Date: 
+#Time: 
+#Verified: 
+#season: 
 tide_data_clean <- tide_data_all %>%
   select("Date", "Time (GMT)", "Verified (ft)", "season")
 
-##list only CSV files containing "wave" in the filename
+##3) Read in wave data 
+#list only CSV files containing "wave" in the filename
 wave_files <- list.files(path = "./RawData/", pattern = "wave.*\\.csv$", full.names = TRUE)
 
 ##read and combine only the wave data files
@@ -200,7 +220,7 @@ wave_data_all <- wave_files %>%
 
 ##convert all wave columns to numeric
 wave_data_all <- wave_data_all %>%
-  mutate(YY = as.numeric(trimws(YY)),
+  mutate(YY = as.numeric(trimws(YY)), #Explain what the trimws is doing here 
          MM = as.numeric(trimws(MM)),
          DD = as.numeric(trimws(DD)),
          hh = as.numeric(trimws(hh)),
@@ -218,18 +238,25 @@ wave_data_all <- wave_data_all %>%
 options(scipen = 999)
 
 ##select necessary columns from the wave data
+#YY: 
+#MM: 
+#DD: 
+#hh:
+#WVHT: 
+#DPD:
+#season: 
 wave_data_clean <- wave_data_all %>%
   select("YY", "MM", "DD", "hh", "WVHT", "DPD", "season") %>%
-  mutate(wave_power = 0.49 * WVHT^2 * DPD) #calculate wave power from the wave power equation
+  mutate(wave_power = 0.49 * WVHT^2 * DPD) #calculate wave power from the wave power equation: (kW/m) = 0.49 * H_s^2 * T_p
 
-##need date and time columns to match in tide and wave data
-#cleaned tide data
+##4) Build aligned datetime columns and join the tide and wave data 
+#Tide: Combine data and GMT tide into POSIXct 
 tide_data_clean <- tide_data_clean %>%
   mutate(tide_datetime = as.POSIXct(paste(Date, `Time (GMT)`), #combine date + time
                                     format = "%Y-%m-%d %H:%M", #match format
                                     tz = "UTC")) #set time zone to UTC
 
-#cleaned wave data
+#Wave: Combine data and GMT tide into POSIXct 
 wave_data_clean <- wave_data_clean %>%
   mutate(wave_datetime = as.POSIXct(sprintf("%04d-%02d-%02d %02d:00:00", #Format string to create a datetime: "YYYY-MM-DD HH:00:00"
                                             YY, #Year
@@ -243,9 +270,10 @@ wave_data_clean <- wave_data_clean %>%
 tide_wave <- left_join(wave_data_clean, tide_data_clean, by = c("wave_datetime" = "tide_datetime", "season")) %>%
   filter(!is.na(`Verified (ft)`)) #make sure there are no NAs for tide height
 
+##5) Flag and categorize extreme events
 ##set extreme wave and tide threshold levels
-extreme_wave_threshold <- 30 #30 kW/m
-extreme_tide_threshold <- 6 #6 ft  
+extreme_wave_threshold <- 30 #30 kW/m, justification: 
+extreme_tide_threshold <- 6 #6 ft, justification: 
 
 ##flag cases where both wave power and tide were extreme
 tide_wave_flagged <- tide_wave %>%
@@ -265,32 +293,32 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
        x = "Year", y = "Number of Extreme Events") +
   theme_minimal()
 
-##First we need the wave and tide datasets together with the proportion data!
+##6) Combine abiotic data with seal-level MPA data for final read-in data file for abiotic models
 abiotic_variables <- metadata %>%
   select(animalID, season, proportion, total_resights, AgeYears) %>%
   distinct() %>%
-  filter(!is.na(proportion), proportion > 0) %>%
+  filter(!is.na(proportion), proportion > 0) %>% #why filtering out 0? 
   left_join(harem_assignment, by = c("animalID", "season")) %>%
   left_join(tide_wave_flagged, by = "season") %>%
   mutate(season_fct = as.factor(season),
          animalID_fct = as.factor(animalID),
-         area_fct = as.factor(area))
+         area_fct = as.factor(area)) 
 
 ############################# Harem density data processing #################################
 
 ##seal density csv read
 seal.density <- read.csv("./RawData/seal.density.csv")
 
-##avg area density calculation
+# Average density per area-season, then link to assigned harems
 area_density <- seal.density %>%
-  rename(area = Beach) %>%
-  mutate(date = ymd(date), season = year(date)) %>%
+  rename(area = Beach) %>% 
+  mutate(date = ymd(date), season = year(date)) %>% #explanation: 
   group_by(area, season) %>%
-  summarize(avg_density = mean(density), .groups = "drop") %>%
+  summarize(avg_density = mean(density), .groups = "drop") %>%  
   left_join(harem_assignment, by = c("season", "area")) %>% 
-  filter(!is.na(animalID)) #only keep animals observed in the 2016-2025 dataset
+  filter(!is.na(animalID)) #only keep animals observed in the 2016-2025 dataset, explanation:
 
-##check what area density looks like per-season at each location
+##Quick check: area density per-season at each location
 ggplot(area_density, aes(x = area, y = avg_density, fill = area)) +
   geom_bar(stat = "identity") +
   facet_wrap(~ season, scales = "free_x") +
@@ -300,23 +328,23 @@ ggplot(area_density, aes(x = area, y = avg_density, fill = area)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-##check whether there are ties for assigned harems
+# Identify animal-season cases with multiple harems (ties)
 harem_duplicates <- area_density %>%
   group_by(season, animalID) %>%
   filter(n() > 1) %>%
-  arrange(animalID, season) #there are duplicates
+  arrange(animalID, season)
 
-##break ties by the harem with higher density
+# Break ties by selecting the harem with highest average density
 area_density <- area_density %>%
   group_by(season, animalID) %>%
   slice_max(avg_density, with_ties = FALSE) %>%
   ungroup()
 
-##check locations in the data that don't match with the ones we have density for from the Ano map
+# Check for remaining area mismatches (for manual cleaning if needed)
 unique(area_density$area)
-unique(seal.density$Beach) #there are location mismatches
+unique(seal.density$Beach)
 
-##remove all harem density NAs for now
+##remove all harem density NAs for now, justification: 
 area_density <- area_density %>%
   filter(!is.na(avg_density))
 
@@ -325,24 +353,28 @@ area_density <- area_density %>%
 ##check location names in the dataset
 unique(abiotic_variables$area)
 
-##create groups for South and North point
+## Add spatial group (NP vs SP) and a binary flag for perfect MPA (proportion == 1)
 abiotic_variables <- abiotic_variables %>%
-  mutate(group = case_when(
-    grepl("^N", area_fct) | area_fct %in% c("BBNN", "BBNS", "BBN") ~ "NP",
-    TRUE ~ "SP"))
+  mutate(
+    group  = case_when(
+      grepl("^N", area_fct) | area_fct %in% c("BBNN", "BBNS", "BBN") ~ "NP",
+      TRUE                                                           ~ "SP"
+    ),
+    is_one = as.numeric(proportion == 1)  # 1 = proportion == 1, 0 = otherwise
+  )
 
-##first, modify abiotic_variables so it has a column for proportion = 1 (1) OR not 1 (0)
-abiotic_variables <- abiotic_variables %>%
-  mutate(is_one = as.numeric(proportion == 1))
-
-##create a version of abiotic_variables with proportion < 1
+## Subset to records with proportion < 1 to subset is_one from between 0 and 1
 abiotic_variables_sub <- abiotic_variables %>%
   filter(proportion < 1)
 
-##transform proportion for this filtered data to make it suitable for gamma distribution 
-flipped_prop <- max(abiotic_variables_sub$proportion) - abiotic_variables_sub$proportion #subtract all proportions from the maximum
-flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
-abiotic_variables_sub$flipped_prop <- flipped_prop
+## Transform proportion for gamma modeling because (explanation)
+##  - flip around the maximum so high proportions become small values
+##  - shift so the minimum is just above zero (no exact zeros)
+flipped_prop <- max(abiotic_variables_sub$proportion) - abiotic_variables_sub$proportion
+flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001
+
+abiotic_variables_sub <- abiotic_variables_sub %>%
+  mutate(flipped_prop = flipped_prop)
 
 
 ######################### Plotting distributions and predictors #############################
