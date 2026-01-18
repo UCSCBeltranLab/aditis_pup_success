@@ -6,28 +6,28 @@ library(sf)
 options(scipen = 999)
 
 #read in beach shapefile
+list.files("..", pattern = "Ano Nuevo.*\\.shp$", recursive = TRUE, full.names = TRUE)
 
-beaches <- st_read("../RawData/ANM map/Ano Nuevo Map Final.shp") %>%
+beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp") %>%
   select(-id)
 
 #read in seal detections
-dates <- list.files("../RawData/Picterra_outputs/")
+dates <- list.files("./RawData/Picterra_outputs/")
 
 years <- substr(dates, 0, 4)
 
 picterra.output <- data.frame()
 
 for(i in 1:length(dates)) {
-  filepathadults <- paste0("../RawData/Picterra_outputs/", dates[i], "/adults/adults.shp")
+  filepathadults <- paste0("./RawData/Picterra_outputs/", dates[i], "/adults/adults.shp")
   
-  filepathpups <- paste0("../RawData/Picterra_outputs/", dates[i], "/pups/pups.shp")
+  filepathpups <- paste0("./RawData/Picterra_outputs/", dates[i], "/pups/pups.shp")
   
   picterra.output <- rbind(picterra.output, 
                            cbind(st_read(filepathadults), date = dates[i], year = years[i], class = "adults"),
                            cbind(st_read(filepathpups), date = dates[i], year = years[i], class = "pups"))
   
 }
-
 
 
 # Convert to NAD83 / California zone 3 -------------------------------------------------------------
@@ -43,7 +43,6 @@ beaches <- st_transform(beaches,"EPSG:26943") #transform shape file
 
 
 # Assign age/sex class to seals -----------------------------------------------
-
 
 uas.data <- picterra.output %>%
   filter(class == "adults" & area_m2 < 3.8 &
@@ -117,6 +116,6 @@ seal.density <- density.df %>%
  st_drop_geometry()
 
 
-write.csv(seal.density, "../IntermediateData/seal.density.csv",
+write.csv(seal.density, "./IntermediateData/seal.density.csv",
           row.names = FALSE)
 

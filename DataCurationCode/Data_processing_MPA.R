@@ -21,7 +21,7 @@ raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv")
 # the raw resight data: includes animalID, season, date, area, entry date, entry (person), withpup
 summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
 # specific per-animal data: includes animalID, age, season, birth date with precision
- 
+
 ##ensure that each animalID is only seen once per day (accounting for double resights)
 raw_data <- raw_data %>%
   arrange(animalID) %>%
@@ -29,6 +29,20 @@ raw_data <- raw_data %>%
   slice_min(order_by = entry, n = 1, with_ties = FALSE) %>% #gets rid of double resights
   filter(withpup %in% c(0, 1)) %>% #restrict to only values of wtihpup score = 0 or 1
   ungroup() 
+
+##calculate from raw data: whether the animal had a pup in each season
+pupping_exp <- raw_data %>%
+  group_by(animalID, season) %>%
+  summarize(had_pup = as.integer(any(withpup == 1)), #any observation of with 1 pup counts as pupping experience
+            .groups = "drop") %>%
+  group_by(animalID) %>%
+  arrange(season, .by_group = TRUE) %>%  #so that season is chronological
+  mutate(experience_prior = lag(cumsum(had_pup == 1), default = 0)) %>% #calculate prior pup experience
+  ungroup()
+
+#join with raw data to include prior experience
+raw_data <- raw_data %>%
+  left_join(pupping_exp, by = c("animalID", "season"))
 
 ##create a metadata table combining summarized and raw data
 metadata <- summarized_data %>%
@@ -74,7 +88,8 @@ area_counts <- metadata %>%
 harem_assignment <- area_counts %>%
   group_by(animalID, season) %>%
   filter(count == max(count)) %>% #these are assigned areas for each female
-  ungroup()
+  ungroup() %>%
+  select(animalID, season, dominant_area = area) #call dominant area to avoid confusion
 
 ### Calculate cohort for each female ###
 
@@ -104,16 +119,21 @@ metadata <- metadata %>%
 
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
-  select(animalID, season, AgeYears, BirthDate, year_born, proportion, total_resights, count_1_pup) %>%
-  distinct() %>% #eliminate the metadata multiple rows; we only need one per animalID per season
-  filter(!is.na(proportion), proportion > 0) %>% #eliminate NA and 0s for proportion
-  mutate(BirthDate = as.Date(BirthDate)) %>%
+  left_join(harem_assignment, by = c("animalID","season")) %>% # add harem information
+  select(animalID, season, AgeYears, BirthDate, year_born, dominant_area, experience_prior, proportion, total_resights, count_1_pup) %>%
+  distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
+  filter(!is.na(proportion), proportion > 0) %>%
+  mutate(BirthDate = as.Date(BirthDate),
+         birth_doy = lubridate::yday(BirthDate),
+         group = case_when(grepl("^N", dominant_area) | dominant_area %in% c("BBNN","BBNS","BBN") ~ "NP",
+                           TRUE ~ "SP")) %>% #create a grouping factor for NP/SP location differences
   group_by(animalID) %>%
-  mutate(year_born_num = as.numeric(year_born), #numeric year_born allows it to be included in the model
-         animalID_fct = factor(animalID), #make animalID a factor in separate column
-         season_fct = factor(season), #make season a factor in separate column
-         age_last_seen = max(AgeYears), #calculate age at last observation
-         BirthDate = format(BirthDate, "%m-%d")) %>% #format BirthDate as month-day
+  mutate(year_born_num = as.numeric(year_born), #year born numeric version
+         animalID_fct  = factor(animalID), #animalID factor
+         season_fct    = factor(season), #season factor
+         age_last_seen = max(AgeYears, na.rm = TRUE), #age at last observation
+         BirthDate     = format(BirthDate, "%m-%d"), #pup birthdate
+         group_fct = factor(group)) %>% #group factor
   ungroup()
 
 ######################## Modifying biotic variables needed for the model approach ############################
@@ -162,8 +182,8 @@ tide_data_all <- tide_data_all %>%
          MM   = month(Date),
          YY   = year(Date),
          season = case_when(MM == 12 ~ YY + 1,
-                              MM %in% c(1, 2, 3) ~ YY,
-                              TRUE ~ NA_real_))
+                            MM %in% c(1, 2, 3) ~ YY,
+                            TRUE ~ NA_real_))
 # December observations belong to the *following* breeding season;
 # Jan–Mar belong to the current year’s season
 
@@ -259,15 +279,9 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
   theme_minimal()
 
 # 5) Combine abiotic data with seal-level MPA data for final read-in data file for abiotic models
-abiotic_variables <- metadata %>%
-  select(animalID, season, proportion, total_resights, AgeYears) %>%
-  distinct() %>%
-  filter(!is.na(proportion), proportion > 0) %>% #proportion should not be 0, the animal should be seen with a pup at least once (Birth Date)
-  left_join(harem_assignment, by = c("animalID", "season")) %>%
+abiotic_variables <- intrinsic_variables %>%
   left_join(tide_wave_flagged, by = "season") %>%
-  mutate(season_fct = as.factor(season),
-         animalID_fct = as.factor(animalID),
-         area_fct = as.factor(area)) 
+  filter(!is.na(n_extreme_both))
 
 ############################# Harem density data processing #################################
 
@@ -276,16 +290,16 @@ seal.density <- read.csv("./RawData/seal.density.csv")
 
 # 2) Calculate average density per area-season, then link to assigned harems
 area_density <- seal.density %>%
-  rename(area = Beach) %>% 
+  rename(dominant_area = Beach) %>% 
   mutate(date = ymd(date), season = year(date)) %>% 
   #transform the date column so that it's in date form with year = season to match the resight data
-  group_by(area, season) %>%
+  group_by(dominant_area, season) %>%
   summarize(avg_density = mean(density), .groups = "drop") %>% #calculate mean density per area in each season 
-  left_join(harem_assignment, by = c("season", "area")) %>% 
+  left_join(harem_assignment, by = c("season", "dominant_area")) %>% 
   filter(!is.na(animalID)) #only keep animals observed in the 2016-2025 dataset to match the drone data
 
 ##Quick check: area density per-season at each location
-ggplot(area_density, aes(x = area, y = avg_density, fill = area)) +
+ggplot(area_density, aes(x = dominant_area, y = avg_density, fill = dominant_area)) +
   geom_bar(stat = "identity") +
   facet_wrap(~ season, scales = "free_x") +
   labs(x = "Location",
@@ -308,7 +322,7 @@ area_density <- area_density %>%
   ungroup()
 
 # Check for remaining area mismatches (for manual cleaning if needed)
-table(area_density$area)
+table(area_density$dominant_area)
 table(seal.density$Beach)
 
 ##remove all harem density NAs because there are very few (<10) instances of areas that don't match the map locations
@@ -318,13 +332,13 @@ area_density <- area_density %>%
 ########################### Modifying abiotic variables needed for the model approach ################################
 
 ##check location names in the dataset
-unique(abiotic_variables$area)
+unique(abiotic_variables$dominant_area)
 
 ## Add spatial group (NP vs SP) and a binary flag for perfect MPA (proportion == 1)
 abiotic_variables <- abiotic_variables %>%
-  mutate(group  = case_when(grepl("^N", area_fct) | area_fct %in% c("BBNN", "BBNS", "BBN") ~ "NP",
-                            TRUE ~ "SP")) %>%
-  mutate(group_fct = factor(group)) %>% #convert group to fct
+  mutate(group  = case_when(grepl("^N", dominant_area) | dominant_area %in% c("BBNN", "BBNS", "BBN") ~ "NP",
+                            TRUE ~ "SP")) %>% #same NP/SP distinction
+  mutate(group_fct = factor(group)) %>% #group factor
   mutate(is_one = as.numeric(proportion == 1))  # 1 = proportion == 1, 0 = otherwise
 
 ## Subset to records with proportion < 1 to subset is_one from between 0 and 1
