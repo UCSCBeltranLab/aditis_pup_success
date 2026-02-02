@@ -12,16 +12,16 @@ beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp") %>%
   select(-id)
 
 #read in seal detections
-dates <- list.files("./RawData/Picterra_outputs/")
+dates <- list.files("./RawData/Picterra_outputs_og/")
 
 years <- substr(dates, 0, 4)
 
 picterra.output <- data.frame()
 
 for(i in 1:length(dates)) {
-  filepathadults <- paste0("./RawData/Picterra_outputs/", dates[i], "/adults/adults.shp")
+  filepathadults <- paste0("./RawData/Picterra_outputs_og/", dates[i], "/adults/adults.shp")
   
-  filepathpups <- paste0("./RawData/Picterra_outputs/", dates[i], "/pups/pups.shp")
+  filepathpups <- paste0("./RawData/Picterra_outputs_og/", dates[i], "/pups/pups.shp")
   
   picterra.output <- rbind(picterra.output, 
                            cbind(st_read(filepathadults), date = dates[i], year = years[i], class = "adults"),

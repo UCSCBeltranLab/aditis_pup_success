@@ -8,7 +8,6 @@ source("./DataCurationCode/Data_processing_MPA.R")
 mod_binom_1996_2025 <- glmmTMB(is_one ~ age_cat : age10 + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
                                family = binomial(link = "logit"),
                                data = intrinsic_variables)
-
 summary(mod_binom_1996_2025) #model summary
 exp(fixef(mod_binom_1996_2025)$cond) #converts fixed-effect log-odds to odds ratios
 simulateResiduals(mod_binom_1996_2025, plot = TRUE) #plot all residuals 
@@ -109,8 +108,8 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
 
 ### Piecewise model for is_one - full dataset ###
 mod_binom_exp_1996_2025 <- glmmTMB(is_one ~ experience_prior + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
-                               family = binomial(link = "logit"),
-                               data = intrinsic_variables)
+                                   family = binomial(link = "logit"),
+                                   data = intrinsic_variables)
 summary(mod_binom_exp_1996_2025) #model summary
 exp(fixef(mod_binom_exp_1996_2025)$cond) #converts fixed-effect log-odds to odds ratios
 simulateResiduals(mod_binom_exp_1996_2025, plot = TRUE) #plot all residuals 
@@ -119,7 +118,7 @@ check_collinearity(mod_binom_exp_1996_2025) #check predictor VIFs
 
 # ggpredict values for experience_prior
 pred_experience <- ggpredict(mod_binom_exp_1996_2025,
-                      terms = "experience_prior")
+                             terms = "experience_prior")
 
 # plot predicted effect of experience
 ggplot(pred_experience, aes(x = x, y = predicted)) +
@@ -130,6 +129,14 @@ ggplot(pred_experience, aes(x = x, y = predicted)) +
   theme_few()
 
 ############################ Piecewise gamma model (1996-2025) ####################################
+##Quick check: Histogram of filtered data's proportions
+ggplot(data = intrinsic_variables_sub, aes(x = flipped_prop)) +
+  geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
+  labs(x = "Proportion MPA", 
+       y = "Frequency") +
+  scale_y_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_few()
 
 ### Piecewise model for intermediate proportions - full dataset ###
 mod_gamma_1996_2025 <- glmmTMB(flipped_prop ~ age_cat : age10 + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
@@ -161,7 +168,7 @@ ggplot(data = intrinsic_2016_2025, aes(x = proportion)) +
   scale_y_continuous(n.breaks = 10) +
   scale_x_continuous(n.breaks = 10) +
   theme_few()
-  
+
 ### Piecewise model for is_one 2016-2025 ###
 mod_binom_2016_2025 <- glmmTMB(is_one ~ age10 : age_cat + avg_density + age_last_seen + total_resights + (1 | animalID_fct) + (1 | season_fct),
                                family = binomial(link = "logit"),
@@ -307,6 +314,13 @@ ggplot(data = pred_density, aes(x = x, y = predicted)) +
   theme_minimal()
 
 ################# Abiotic binomial and gamma models (1996-2023) ##################
+##plot extreme tide and wave events per season
+ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
+  geom_line(linewidth = 1.2, color = "#1f78b4") +
+  geom_point(color = "darkblue") +
+  labs(title = "Extreme Tide and Storm Events (1996–2025)",
+       x = "Year", y = "Number of Extreme Events") +
+  theme_minimal()
 
 ### Piecewise binomial model with per-year extreme wave/tide events ###
 mod_abiotic_bin <- glmmTMB(is_one ~ n_extreme_both + group_fct + total_resights + (1 | animalID_fct),
@@ -360,7 +374,7 @@ check_collinearity(mod_abiotic_gam) #check predictor VIFs
 #### relationship between density, location (group) ######
 
 mod_density_group <- lm(avg_density ~ group_fct,
-                         data = intrinsic_sub_2016_2025)
+                        data = intrinsic_sub_2016_2025)
 summary(mod_density_group)
 
 ##################### Consistency models and figures ###################

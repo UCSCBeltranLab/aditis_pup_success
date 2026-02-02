@@ -30,14 +30,14 @@ raw_data <- raw_data %>%
   filter(withpup %in% c(0, 1)) %>% #restrict to only values of wtihpup score = 0 or 1
   ungroup() 
 
-##calculate from raw data: whether the animal had a pup in each season
+##calculate prior pupping experience from raw data
 pupping_exp <- raw_data %>%
   group_by(animalID, season) %>%
-  summarize(had_pup = as.integer(any(withpup == 1)), #any observation of with 1 pup counts as pupping experience
+  summarize(had_pup = as.integer(any(withpup == 1)), #any at least 1 bservation of 1 pup counts as pupping experience
             .groups = "drop") %>%
   group_by(animalID) %>%
   arrange(season, .by_group = TRUE) %>%  #so that season is chronological
-  mutate(experience_prior = lag(cumsum(had_pup == 1), default = 0)) %>% #calculate prior pup experience
+  mutate(experience_prior = lag(cumsum(had_pup == 1), default = 0)) %>% #calculate prior pup experience (basically age)
   ungroup()
 
 #join with raw data to include prior experience
@@ -46,10 +46,13 @@ raw_data <- raw_data %>%
 
 ##create a metadata table combining summarized and raw data
 metadata <- summarized_data %>%
-  filter(!is.na(BirthDate)) %>% #only known birthdate moms
-  filter(Precision <= 7) %>% #precision within a week
-  filter(AgeYears <= 24) %>% #removes strange age animals
-  left_join(raw_data, by = c("animalID", "season"))
+  filter(!is.na(BirthDate)) %>%       # only known birthdate moms
+  filter(Precision <= 7) %>%          # precision within a week
+  filter(AgeYears <= 24) %>%          # removes strange age animals
+  left_join(raw_data, by = c("animalID", "season")) %>%   # <-- missing %>% before
+  group_by(AgeYears) %>%
+  mutate(exp_age_centered = experience_prior - mean(experience_prior, na.rm = TRUE)) %>%
+  ungroup()
 
 ### Resight effort and calculating MPA ###
 
@@ -76,6 +79,7 @@ Proportion_MPA <- total_resights %>%
 ##update the metadata to include MPA
 metadata <- metadata %>%
   left_join(Proportion_MPA, by = c("animalID", "season"))
+
 
 ### Assigning each female harem locations ###
 
@@ -117,10 +121,13 @@ metadata <- metadata %>%
 
 ### Build final intrinsic table ###
 
+metadata <- metadata %>%
+  filter(!is.na(proportion))
+
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
   left_join(harem_assignment, by = c("animalID","season")) %>% # add harem information
-  select(animalID, season, AgeYears, BirthDate, year_born, dominant_area, experience_prior, proportion, total_resights, count_1_pup) %>%
+  select(animalID, season, AgeYears, BirthDate, year_born, dominant_area, exp_age_centered, experience_prior, proportion, total_resights, count_1_pup) %>%
   distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
   filter(!is.na(proportion), proportion > 0) %>%
   mutate(BirthDate = as.Date(BirthDate),
@@ -139,7 +146,7 @@ intrinsic_variables <- metadata %>%
 ######################## Modifying biotic variables needed for the model approach ############################
 
 ##Setting senescence threshold at 11 (Allison paper!)
-age_senesce <- 11
+age_senesce <- 9
 
 ##Setting threshold in data
 intrinsic_variables <- intrinsic_variables %>%
