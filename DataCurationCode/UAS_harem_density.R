@@ -93,7 +93,7 @@ seal.buffer <- st_buffer(st_centroid(uas.data[1,]), 10)
 
 plot(st_geometry(seal.buffer))
 
-plot(st_geometry(uas.data[1,]), add = TRUE, col = "red")
+plot(st_geometry(uas.data[1,]), add = TRUE, col = "lightpink")
 
 int <- uas.data %>%
   filter(date == uas.data[[1, 6]]) %>%
@@ -104,7 +104,7 @@ int <- uas.data %>%
 int.poly <- uas.data[row.names(uas.data) %in% row.names(int),]
 
 
-plot(st_geometry(int.poly), add = TRUE)
+plot(st_geometry(int.poly), add = TRUE, col = "lightblue")
 
 
 

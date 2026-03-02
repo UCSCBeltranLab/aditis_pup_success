@@ -5,14 +5,17 @@ library(lubridate)
 library(utils)
 library(dplyr)
 library(glmmTMB)
-library(splines)
+library(lme4)
 library(DHARMa)
 library(ggeffects)
 library(performance)
 library(ggplot2)
 library(ggthemes)
 library(RColorBrewer)
-library(rptR)
+library(parallel)
+library(binom)
+library(gt)
+library(flextable)
 
 ################################ Defining MPA + intrinsic data processing ###############################
 
@@ -21,6 +24,10 @@ raw_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_RAW.csv")
 # the raw resight data: includes animalID, season, date, area, entry date, entry (person), withpup
 summarized_data <- read.csv("./RawData/Aditi 2024 Data Pull 2025_04_17_SUMMARIZED.csv")
 # specific per-animal data: includes animalID, age, season, birth date with precision
+
+summary_counts <- raw_data %>%
+  mutate(date = as.Date(date)) %>%
+  summarise(n_seals = n_distinct(animalID), n_sightings = n())
 
 ##ensure that each animalID is only seen once per day (accounting for double resights)
 raw_data <- raw_data %>%
@@ -33,11 +40,11 @@ raw_data <- raw_data %>%
 ##calculate prior pupping experience from raw data
 pupping_exp <- raw_data %>%
   group_by(animalID, season) %>%
-  summarize(had_pup = as.integer(any(withpup == 1)), #any at least 1 bservation of 1 pup counts as pupping experience
+  summarize(had_pup = as.integer(any(withpup == 1)), #any at least 1 observation of 1 pup counts as pupping experience
             .groups = "drop") %>%
   group_by(animalID) %>%
   arrange(season, .by_group = TRUE) %>%  #so that season is chronological
-  mutate(experience_prior = lag(cumsum(had_pup == 1), default = 0)) %>% #calculate prior pup experience (basically age)
+  mutate(experience_prior = lag(cumsum(had_pup == 1), default = 0)) %>% #calculate prior pup experience
   ungroup()
 
 #join with raw data to include prior experience
@@ -51,8 +58,15 @@ metadata <- summarized_data %>%
   filter(AgeYears <= 24) %>%          # removes strange age animals
   left_join(raw_data, by = c("animalID", "season")) %>%   # <-- missing %>% before
   group_by(AgeYears) %>%
-  mutate(exp_age_centered = experience_prior - mean(experience_prior, na.rm = TRUE)) %>%
   ungroup()
+
+metadata <- metadata %>%
+  group_by(AgeYears) %>%
+  mutate(mean_exp_age = mean(experience_prior, na.rm = TRUE)) %>%
+  ungroup()
+
+metadata <- metadata %>%
+  mutate(residual_experience = experience_prior - mean_exp_age)
 
 ### Resight effort and calculating MPA ###
 
@@ -79,7 +93,6 @@ Proportion_MPA <- total_resights %>%
 ##update the metadata to include MPA
 metadata <- metadata %>%
   left_join(Proportion_MPA, by = c("animalID", "season"))
-
 
 ### Assigning each female harem locations ###
 
@@ -119,52 +132,8 @@ year_born <- age_in_first_season %>%
 metadata <- metadata %>%
   left_join(year_born, by = "animalID")
 
-### Build final intrinsic table ###
-
 metadata <- metadata %>%
   filter(!is.na(proportion))
-
-##make table with intrinsic variables
-intrinsic_variables <- metadata %>%
-  left_join(harem_assignment, by = c("animalID","season")) %>% # add harem information
-  select(animalID, season, AgeYears, BirthDate, year_born, dominant_area, exp_age_centered, experience_prior, proportion, total_resights, count_1_pup) %>%
-  distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
-  filter(!is.na(proportion), proportion > 0) %>%
-  mutate(BirthDate = as.Date(BirthDate),
-         birth_doy = lubridate::yday(BirthDate),
-         group = case_when(grepl("^N", dominant_area) | dominant_area %in% c("BBNN","BBNS","BBN") ~ "NP",
-                           TRUE ~ "SP")) %>% #create a grouping factor for NP/SP location differences
-  group_by(animalID) %>%
-  mutate(year_born_num = as.numeric(year_born), #year born numeric version
-         animalID_fct  = factor(animalID), #animalID factor
-         season_fct    = factor(season), #season factor
-         age_last_seen = max(AgeYears, na.rm = TRUE), #age at last observation
-         BirthDate     = format(BirthDate, "%m-%d"), #pup birthdate
-         group_fct = factor(group)) %>% #group factor
-  ungroup()
-
-######################## Modifying biotic variables needed for the model approach ############################
-
-##Setting senescence threshold at 11 (Allison paper!)
-age_senesce <- 9
-
-##Setting threshold in data
-intrinsic_variables <- intrinsic_variables %>%
-  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
-                          levels = c("Young", "Old"))) %>%
-  mutate(age10 = (AgeYears - age_senesce) / 10) %>% #scaled numeric version of Age centered at senescence threshold 
-  mutate(is_one = as.numeric(proportion == 1)) # 1 = proportion == 1, 0 = otherwise
-
-##create a version of intrinsic_variables with proportion < 1
-intrinsic_variables_sub <- intrinsic_variables %>%
-  filter(proportion < 1)
-
-## Transform proportion for gamma modeling because gamma distribution works better with right skew
-##  - flip around the maximum so high proportions become small values
-##  - shift so the minimum is just above zero (no exact zeros)
-flipped_prop <- max(intrinsic_variables_sub$proportion) - intrinsic_variables_sub$proportion #subtract all proportions from the maximum
-flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
-intrinsic_variables_sub$flipped_prop <- flipped_prop
 
 ########################### Wave energy and tide data processing #############################
 ##Identify seasonal date range: 
@@ -281,37 +250,46 @@ tide_wave_flagged <- tide_wave %>%
 ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
   geom_line(linewidth = 1.2, color = "#1f78b4") +
   geom_point(color = "darkblue") +
+  scale_x_continuous(n.breaks = 28) +
   labs(title = "Extreme Tide and Storm Events (1996–2025)",
        x = "Year", y = "Number of Extreme Events") +
   theme_minimal()
-
-# 5) Combine abiotic data with seal-level MPA data for final read-in data file for abiotic models
-abiotic_variables <- intrinsic_variables %>%
-  left_join(tide_wave_flagged, by = "season") %>%
-  filter(!is.na(n_extreme_both))
 
 ############################# Harem density data processing #################################
 
 # 1) seal density csv read
 seal.density <- read.csv("./RawData/seal.density.csv")
 
-# 2) Calculate average density per area-season, then link to assigned harems
+# 2a) Calculate average density per area-season for modeling, then link to assigned harems
 area_density <- seal.density %>%
   rename(dominant_area = Beach) %>% 
   mutate(date = ymd(date), season = year(date)) %>% 
   #transform the date column so that it's in date form with year = season to match the resight data
   group_by(dominant_area, season) %>%
-  summarize(avg_density = mean(density), .groups = "drop") %>% #calculate mean density per area in each season 
+  summarize(avg_density = mean(density)) %>% #calculate mean density per area in each season 
+  ungroup() |>
   left_join(harem_assignment, by = c("season", "dominant_area")) %>% 
   filter(!is.na(animalID)) #only keep animals observed in the 2016-2025 dataset to match the drone data
 
+# 2b) Data for plotting (one row per beach x season)
+area_density_plot <- area_density %>%
+  group_by(dominant_area, season) %>%
+  summarize(
+    avg_density = first(avg_density),
+    n_animals   = n_distinct(animalID), 
+    .groups = "drop")
+
 ##Quick check: area density per-season at each location
-ggplot(area_density, aes(x = dominant_area, y = avg_density, fill = dominant_area)) +
+ggplot(area_density_plot, aes(x = dominant_area,
+                         y = avg_density,
+                         fill = avg_density)) +
   geom_bar(stat = "identity") +
   facet_wrap(~ season, scales = "free_x") +
-  labs(x = "Location",
+  scale_fill_gradient(low  = "#DEEBF7",
+                      high = "navy") +
+  labs(x = "Beach",
        y = "Average Density",
-       title = "Harem Density per Location by Season") +
+       fill = "Average Density") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -336,110 +314,34 @@ table(seal.density$Beach)
 area_density <- area_density %>%
   filter(!is.na(avg_density))
 
-########################### Modifying abiotic variables needed for the model approach ################################
+###################### Build final modeling table ###################
 
-##check location names in the dataset
-unique(abiotic_variables$dominant_area)
+##make table with intrinsic variables
+intrinsic_variables <- metadata %>%
+  ## left_join(harem_assignment, by = c("animalID", "season")) %>% 
+  select(animalID, season, AgeYears, BirthDate, year_born, residual_experience, experience_prior, years_since_first, proportion, total_resights, count_1_pup) %>%
+  distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
+  filter(!is.na(proportion), proportion > 0) %>%
+  mutate(BirthDate = as.Date(BirthDate),
+         birth_doy = lubridate::yday(BirthDate)) %>%
+        ## group = case_when(grepl("^N", dominant_area) | dominant_area %in% c("BBNN","BBNS","BBN") ~ "NP",
+                           # TRUE ~ "SP")) %>% #create a grouping factor for NP/SP location differences
+  group_by(animalID) %>%
+  mutate(animalID_fct = factor(animalID), #animalID factor
+         season_fct = factor(season)) %>% #season factor
+       ## optional group_fct = factor(group)) %>% #group factor
+  ungroup() %>%
+  left_join(area_density %>% select(animalID, season, dominant_area, avg_density), by = c("animalID", "season")) %>%
+  left_join(tide_wave_flagged, by = "season")
 
-## Add spatial group (NP vs SP) and a binary flag for perfect MPA (proportion == 1)
-abiotic_variables <- abiotic_variables %>%
-  mutate(group  = case_when(grepl("^N", dominant_area) | dominant_area %in% c("BBNN", "BBNS", "BBN") ~ "NP",
-                            TRUE ~ "SP")) %>% #same NP/SP distinction
-  mutate(group_fct = factor(group)) %>% #group factor
-  mutate(is_one = as.numeric(proportion == 1))  # 1 = proportion == 1, 0 = otherwise
+######################## Modifying age variables needed for the model approach ############################
 
-## Subset to records with proportion < 1 to subset is_one from between 0 and 1
-abiotic_variables_sub <- abiotic_variables %>%
-  filter(proportion < 1)
-
-## Transform proportion for gamma modeling because gamma distribution works better with right skew
-##  - flip around the maximum so high proportions become small values
-##  - shift so the minimum is just above zero (no exact zeros)
-flipped_prop <- max(abiotic_variables_sub$proportion) - abiotic_variables_sub$proportion #subtract all proportions from the maximum
-flipped_prop <- flipped_prop - min(flipped_prop) + 0.0000001 #ensure no 0s by adding small constant
-abiotic_variables_sub$flipped_prop <- flipped_prop
-
-######################### Plotting distributions and predictors #############################
-
-##visualizing sample size is useful for determining stringency
-
-##sample size per season
-sample_size_per_season <- intrinsic_variables %>%
-  group_by(season) %>%
-  summarize(sample_size = n_distinct(animalID))
-
-##create a plot for sample size per season
-ggplot(data = sample_size_per_season, aes(x = season, y = sample_size)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(x = "Season", 
-       y = "Sample size") +
-  theme_few() + 
-  scale_y_continuous(n.breaks = 10)
-
-##sample size per age
-sample_size_per_age <- intrinsic_variables %>%
-  group_by(AgeYears) %>%
-  summarize(sample_size = n_distinct(animalID))
-
-##create a plot for sample size by age
-ggplot(data = sample_size_per_age, aes(x = AgeYears, y = sample_size)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(x = "Age", 
-       y = "Sample Size") +
-  theme_few() +
-  scale_y_continuous(n.breaks = 10) +
-  scale_x_continuous(n.breaks = 20)
-
-##histogram of proportions
-ggplot(data = intrinsic_variables, aes(x = proportion)) +
-  geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
-  labs(x = "Proportion MPA", 
-       y = "Frequency") +
-  scale_y_continuous(n.breaks = 10) +
-  scale_x_continuous(n.breaks = 10) +
-  theme_few()
-
-##histogram of flipped proportion
-ggplot(data = intrinsic_variables_sub, aes(x = flipped_prop)) +
-  geom_histogram(binwidth = 0.01, fill = "skyblue", color = "darkblue") +
-  labs(title = "Histogram of Flipped Proportion MPA <1",
-       x = "Flipped Proportion MPA", y = "Frequency") +
-  scale_y_continuous(n.breaks = 10) +
-  scale_x_continuous(n.breaks = 10) +
-  theme_few()
-
-##plot age against proportion
-ggplot(data = intrinsic_variables, aes(x = AgeYears, y = proportion)) +
-  geom_point() +
-  labs(x = "Age", 
-       y = "Proportion") +
-  theme_few()
-
-##plot year born against proportion
-ggplot(data = intrinsic_variables, aes(x = year_born_num, y = proportion)) +
-  geom_point() +
-  labs(x = "Year Born", 
-       y = "Proportion")
-
-##plot season against proportion
-ggplot(data = intrinsic_variables, aes(x = season_fct, y = proportion)) +
-  geom_violin(fill = "lightblue", color = "darkblue") +
-  geom_jitter(width = 0.1, alpha = 0.5) +
-  labs(x = "Season", 
-       y = "Proportion")
-
-##variation in proportion by yr born
-intrinsic_summary <- intrinsic_variables %>%
-  group_by(year_born) %>%
-  summarise(mean_prop = mean(proportion, na.rm = TRUE),
-            conf_int = sd(proportion, na.rm = TRUE) / sqrt(n()))
-
-##plot yr born against mean proportion with CIs
-ggplot(intrinsic_summary, aes(x = year_born, y = mean_prop)) +
-  geom_line() +
-  geom_point(size = 2) +
-  geom_errorbar(aes(ymin = mean_prop - conf_int, ymax = mean_prop + conf_int), width = 0.2) +
-  labs(x = "Cohort (Year Born)",
-       y = "Mean Proportion Mom–Pup Association") +
-  theme_minimal()
+##Setting senescence threshold
+age_senesce <- 9
+  
+##Setting threshold in data
+intrinsic_variables <- intrinsic_variables %>%
+  mutate(age_cat = factor(ifelse(AgeYears < age_senesce, "Young", "Old"),
+                          levels = c("Young", "Old"))) %>%
+  mutate(age10 = (AgeYears - age_senesce) / 10) #scaled numeric version of age centered at senescence threshold
 

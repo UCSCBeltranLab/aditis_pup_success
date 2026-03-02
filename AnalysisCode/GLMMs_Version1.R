@@ -103,7 +103,6 @@ ggplot(pred_grid, aes(x = AgeYears, y = predicted, color = age_cat, fill = age_c
        fill = "Age class") +
   theme_few()
 
-
 ######################## Maternal pupping experience model (1996-2025) ##################################
 
 ### Piecewise model for is_one - full dataset ###
@@ -495,7 +494,7 @@ individual_consistency <- season_level %>%
     #Consistency: standardized so that SD = 0 (no variation) → 1, and SD = 0.5 (max) → 0
     consistency = pmax(pmin(1 - (sd_assoc / 0.5), 1), 0)   # 0–1, higher = more consistent
   ) %>%
-  filter(n_seasons >= 2) #require at least two repeated breeding seasons per individual
+  filter(n_seasons >= 3) #require at least two repeated breeding seasons per individual
 
 # 3) Plot consistency across entire dataset
 ggplot(individual_consistency,
@@ -563,15 +562,15 @@ star_data <- individual_consistency %>%
 
 ## boxplot with color gradient for proportion and standard deviation 
 ggplot(individual_consistency, aes(x = animalID_fct, y = proportion, fill = sd_assoc)) +
-  geom_boxplot(width = 0.7, outlier.size = 1.5, outlier.color = "black") +
+  geom_boxplot(width = 0.7, outlier.size = 0.6, outlier.color = "#04BBB2") +
   geom_jitter(size = 1, alpha = 0.6, color = "#04BBB2") +
   scale_fill_gradient(low = "#D8FFF7", high = "#073481", name = "SD of Proportion") +
   geom_text(data = star_data, aes(x = animalID_fct, y = y_position, label = "*"), color = "#C699E1", size = 7, inherit.aes = FALSE) +
   coord_cartesian(ylim = c(0, 1.03)) +
   scale_y_continuous(n.breaks = 10) +
   theme_few() +
-  labs(x = "Animal ID", 
-       y = "Proportion") +
+  labs(x = "Individual ID", 
+       y = "Mother-offspring association") +
   theme(axis.text.x = element_text(angle = 90, size = 6))
 
 # 1) one row per animal with its consistency
@@ -581,7 +580,7 @@ animal_order <- individual_consistency %>%
   pull(animalID_fct)
 
 # 2) order animalID to consistency score
-individual_consistency <- individual_consistency %>%
+individual_consistency_ordered <- individual_consistency %>%
   mutate(animalID_fct = factor(animalID_fct, levels = animal_order))
 
 # 3) plot same as above but ordered from most -> least consistent
