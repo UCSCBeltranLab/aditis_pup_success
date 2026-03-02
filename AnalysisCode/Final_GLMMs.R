@@ -330,21 +330,19 @@ exp(fixef(mod_int_weather_2016_2023)) #converts fixed-effect log-odds to odds ra
 resid <- simulateResiduals(mod_int_weather_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_weather_2016_2023) #check predictor VIFs
 
-# 4) Predictions for the interaction
-#    NOTE: your model uses scale(n_extreme_both). ggpredict handles this if you reference the raw variable name.
-#    This creates age curves at several n_extreme_both values (you can change the bracket list).
+# 1) Predictions for the interaction
 pred_mod_int <- ggpredict(mod_int_weather_2016_2023,
                           terms = c("AgeYears [all]", "n_extreme_both [all]"))
 
 pred_df$n_extreme_both_num <- parse_number(as.character(pred_df$group))
 
-# 5) Plot: ribbon + line, color gradient by n_extreme_both level
+# 2) Plot: ribbon + line, color gradient by n_extreme_both intensity
 ggplot(pred_df, aes(x = x, y = predicted, colour = n_extreme_both_num, group = group)) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = n_extreme_both_num),
               alpha = 0.12, colour = NA) +
   geom_line(linewidth = 0.9, alpha = 0.85) +
-  scale_colour_gradientn(name = "n_extreme_both", colors = c("purple", "#f768a1", "#ae017e")) +
-  scale_fill_gradientn(colors = c("purple", "#f768a1", "#ae017e"), guide = "none") +
+  scale_colour_gradientn(name = "n_extreme_both", colors = c("pink", "#f768a1", "#ae017e")) +
+  scale_fill_gradientn(colors = c("pink", "#f768a1", "#ae017e"), guide = "none") +
   labs(x = "Maternal age", y = "Mother-offspring association (predicted probability)") +
   theme_minimal()
 
@@ -549,11 +547,11 @@ thr_res <- map_dfr(cutoff, \(a){
              control = glmerControl(optimizer="bobyqa"),
              data = d)
   
-  # coefficient table (conditional model)
+  #coefficient table
   tab <- as.data.frame(summary(m)$coefficients$cond) %>%
     rownames_to_column("term")
   
-  # interaction term = slope of age10 in Old
+  #interaction term = slope of age10 for Old
   term_name <- "age_catOld : age10"
   
   row <- filter(tab, term == term_name)
