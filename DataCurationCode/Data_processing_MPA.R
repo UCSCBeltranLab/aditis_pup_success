@@ -319,7 +319,7 @@ area_density <- area_density %>%
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
   ## left_join(harem_assignment, by = c("animalID", "season")) %>% 
-  select(animalID, season, AgeYears, BirthDate, year_born, residual_experience, experience_prior, years_since_first, proportion, total_resights, count_1_pup) %>%
+  select(animalID, season, AgeYears, BirthDate, year_born, residual_experience, experience_prior, proportion, total_resights, count_1_pup) %>%
   distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
   filter(!is.na(proportion), proportion > 0) %>%
   mutate(BirthDate = as.Date(BirthDate),
