@@ -5,7 +5,6 @@ source("./DataCurationCode/Data_processing_MPA.R")
 
 ##The first model includes all predictors with a smaller subset of data (2016-2023)
 ##The second model allows us to test for senescence/non-linearity of the age predictor using the full dataset (1996-2025)
-##Model predictions for figures use bootstrap
 
 ########## 1a) 2016-2023 subset model with all predictors ###############
 
@@ -27,8 +26,7 @@ mod_binom_2016_2023 <- glmer(proportion ~ AgeYears + n_extreme_both + avg_densit
                              data = intrinsic_2016_2023); summary(mod_binom_2016_2023)
 ranef(mod_binom_2016_2023)
 exp(fixef(mod_binom_2016_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_binom_2016_2023, plot = TRUE) #plot residuals
-plotResiduals(resid, form = intrinsic_2016_2023$AgeYears) #age residuals
+simulateResiduals(mod_binom_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_binom_2016_2023) #check predictor VIFs
 
 # 3) Compare base model to model with experience instead of age 
@@ -39,10 +37,10 @@ mod_binom_exp_2016_2023 <- glmer(proportion ~ experience_prior + avg_density + n
                                  data = intrinsic_2016_2023); summary(mod_binom_exp_2016_2023) #model summary
 ranef(mod_binom_exp_2016_2023)
 exp(fixef(mod_binom_exp_2016_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_binom_exp_2016_2023, plot = TRUE) #plot residuals
+simulateResiduals(mod_binom_exp_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_binom_exp_2016_2023) #check predictor VIFs
 
-#predicted effect of puppping experience
+#predicted effect of pupping experience
 plot(ggpredict(mod_binom_exp_2016_2023, terms = "experience_prior"))
 
 ### Linear age figure ###
@@ -184,7 +182,7 @@ ggplot(pred_extreme_2016_2023, aes(x = x, y = predicted, group = group, color = 
 
 ############# 1b) 1996-2025 full dataset model for age ###############
 
-## model for all years to estimate age effects
+## model for full dataset to estimate age effects
 ## age with piecewise threshold (best supported, see 2a)
 ## age_cat = "Young", "Old" based on age_senesce
 ## age10 = (AgeYears - age_senesce) / 10) scaled numeric version of age centered at senescence threshold
@@ -306,7 +304,7 @@ mod_int_2016_2025 <- glmer(proportion ~ AgeYears * scale(avg_density) + (1 | ani
                            data = intrinsic_variables); summary(mod_int_2016_2025)
 ranef(mod_int_2016_2025)
 exp(fixef(mod_int_2016_2025)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_int_2016_2025, plot = TRUE) #plot residuals
+simulateResiduals(mod_int_2016_2025, plot = TRUE) #plot residuals
 check_collinearity(mod_int_2016_2025) #check predictor VIFs
 
 mod_int_1996_2023 <- glmer(proportion ~ age10 : age_cat * scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
@@ -316,7 +314,7 @@ mod_int_1996_2023 <- glmer(proportion ~ age10 : age_cat * scale(n_extreme_both) 
                            data = intrinsic_variables); summary(mod_int_1996_2023)
 ranef(mod_int_1996_2023)
 exp(fixef(mod_int_1996_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_int_1996_2023, plot = TRUE) #plot residuals
+simulateResiduals(mod_int_1996_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_1996_2023) #check predictor VIFs
 
 ### model with interaction between age*n_extreme_both with all predictors ###
@@ -327,7 +325,7 @@ mod_int_weather_2016_2023 <- glmer(proportion ~ AgeYears * scale(n_extreme_both)
                                    data = intrinsic_variables); summary(mod_int_weather_2016_2023)
 ranef(mod_int_weather_2016_2023)
 exp(fixef(mod_int_weather_2016_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_int_weather_2016_2023, plot = TRUE) #plot residuals
+simulateResiduals(mod_int_weather_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_weather_2016_2023) #check predictor VIFs
 
 # 1) Predictions for the interaction
@@ -339,7 +337,7 @@ pred_df$n_extreme_both_num <- parse_number(as.character(pred_df$group))
 # 2) Plot: ribbon + line, color gradient by n_extreme_both intensity
 ggplot(pred_df, aes(x = x, y = predicted, colour = n_extreme_both_num, group = group)) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = n_extreme_both_num),
-              alpha = 0.12, colour = NA) +
+              alpha = 0.12, color = NA) +
   geom_line(linewidth = 0.9, alpha = 0.85) +
   scale_colour_gradientn(name = "n_extreme_both", colors = c("pink", "#f768a1", "#ae017e")) +
   scale_fill_gradientn(colors = c("pink", "#f768a1", "#ae017e"), guide = "none") +
@@ -354,7 +352,7 @@ mod_int_density_2016_2023 <- glmer(proportion ~ AgeYears * scale(avg_density) + 
                                    data = intrinsic_variables); summary(mod_int_density_2016_2023)
 ranef(mod_int_density_2016_2023)
 exp(fixef(mod_int_density_2016_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_int_density_2016_2023, plot = TRUE) #plot residuals
+simulateResiduals(mod_int_density_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_density_2016_2023) #check predictor VIFs
 
 ### model with interactions between age*density*n_extreme_both ###
@@ -365,7 +363,7 @@ mod_int_all_2016_2023 <- glmer(proportion ~ AgeYears * scale(avg_density) * scal
                                data = intrinsic_variables); summary(mod_int_all_2016_2023)
 ranef(mod_int_all_2016_2023)
 exp(fixef(mod_int_all_2016_2023)) #converts fixed-effect log-odds to odds ratios
-resid <- simulateResiduals(mod_int_all_2016_2023, plot = TRUE) #plot residuals
+simulateResiduals(mod_int_all_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_all_2016_2023) #check predictor VIFs
 
 #################### 2a) 1996-2025 linear vs. quadratic vs. piecewise model AIC comparison ########################
