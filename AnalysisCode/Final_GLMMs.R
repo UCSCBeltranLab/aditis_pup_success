@@ -23,7 +23,7 @@ mod_binom_2016_2023 <- glmer(proportion ~ AgeYears + n_extreme_both + avg_densit
                              weights = total_resights,
                              family = binomial(link= "logit"),
                              control = glmerControl(optimizer = "bobyqa"),
-                             data = intrinsic_variables); summary(mod_binom_2016_2023)
+                             data = intrinsic_2016_2023); summary(mod_binom_2016_2023)
 ranef(mod_binom_2016_2023)
 exp(fixef(mod_binom_2016_2023)) #converts fixed-effect log-odds to odds ratios
 simulateResiduals(mod_binom_2016_2023, plot = TRUE) #plot residuals
