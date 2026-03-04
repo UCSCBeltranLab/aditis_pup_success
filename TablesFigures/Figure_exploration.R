@@ -483,4 +483,8 @@ ggplot(ind_consistency_age_strat,
     legend.title    = element_text(face = "bold")
   )
 
+## check who the most consistent individuals are!
+ind_consistency_age$animalID_fct[ind_consistency_age$strategy_cross == "Consistently above peers"]
 
+ind_consistency_age_perfect <- ind_consistency_age %>%
+  filter(strategy_cross == "Consistently above peers")

@@ -23,7 +23,7 @@ mod_binom_2016_2023 <- glmer(proportion ~ AgeYears + n_extreme_both + avg_densit
                              weights = total_resights,
                              family = binomial(link= "logit"),
                              control = glmerControl(optimizer = "bobyqa"),
-                             data = intrinsic_2016_2023); summary(mod_binom_2016_2023)
+                             data = intrinsic_variables); summary(mod_binom_2016_2023)
 ranef(mod_binom_2016_2023)
 exp(fixef(mod_binom_2016_2023)) #converts fixed-effect log-odds to odds ratios
 simulateResiduals(mod_binom_2016_2023, plot = TRUE) #plot residuals
@@ -156,8 +156,6 @@ pred_extreme_2016_2023 <- ggpredict(mod_binom_2016_2023,
 intrinsic_2016_2023 <- intrinsic_2016_2023 %>%
   mutate(season_fct = factor(season_fct,
                              levels = sort(unique(as.numeric(as.character(season_fct))))))
-
-seasons <- levels(intrinsic_2016_2023$season_fct) #ordered season levels (used everywhere)
 
 # 3) force the same order in ggpredict output (its season column is `group`)
 pred_extreme_2016_2023$group <- factor(pred_extreme_2016_2023$group, levels = seasons)
@@ -297,7 +295,7 @@ ggplot() +
 
 #################### 1c) Interaction models with age, extreme events, density ##########################
 
-mod_int_2016_2025 <- glmer(proportion ~ AgeYears * scale(avg_density) + (1 | animalID_fct) + (1 | season_fct),
+mod_int_2016_2025 <- glmer(proportion ~ scale(AgeYears) * scale(avg_density) + (1 | animalID_fct) + (1 | season_fct),
                            weights = total_resights,
                            family = binomial(link= "logit"),
                            control = glmerControl(optimizer = "bobyqa"),
@@ -318,7 +316,7 @@ simulateResiduals(mod_int_1996_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_1996_2023) #check predictor VIFs
 
 ### model with interaction between age*n_extreme_both with all predictors ###
-mod_int_weather_2016_2023 <- glmer(proportion ~ AgeYears * scale(n_extreme_both) + scale(avg_density) + (1 | animalID_fct) + (1 | season_fct),
+mod_int_weather_2016_2023 <- glmer(proportion ~ scale(AgeYears) * scale(n_extreme_both) + scale(avg_density) + (1 | animalID_fct) + (1 | season_fct),
                                    weights = total_resights,
                                    family = binomial(link = "logit"),
                                    control = glmerControl(optimizer = "bobyqa"),
@@ -345,7 +343,7 @@ ggplot(pred_df, aes(x = x, y = predicted, colour = n_extreme_both_num, group = g
   theme_minimal()
 
 ### model with interaction between age*density with all predictors ###
-mod_int_density_2016_2023 <- glmer(proportion ~ AgeYears * scale(avg_density) + scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
+mod_int_density_2016_2023 <- glmer(proportion ~ scale(AgeYears) * scale(avg_density) + scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
                                    weights = total_resights,
                                    family = binomial(link = "logit"),
                                    control = glmerControl(optimizer = "bobyqa"),
@@ -356,7 +354,7 @@ simulateResiduals(mod_int_density_2016_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_density_2016_2023) #check predictor VIFs
 
 ### model with interactions between age*density*n_extreme_both ###
-mod_int_all_2016_2023 <- glmer(proportion ~ AgeYears * scale(avg_density) * scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
+mod_int_all_2016_2023 <- glmer(proportion ~ scale(AgeYears) * scale(avg_density) * scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
                                weights = total_resights,
                                family = binomial(link = "logit"),
                                control = glmerControl(optimizer = "bobyqa"),
