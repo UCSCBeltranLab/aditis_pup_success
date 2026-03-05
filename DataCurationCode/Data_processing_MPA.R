@@ -256,6 +256,8 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
   theme_minimal()
 
 ############################# Harem density data processing #################################
+##run the source code from harem density processing
+source("./DataCurationCode/Updated_UAS_harem_density.R")
 
 # 1) seal density csv read
 seal.density <- read.csv("./RawData/seal.density.csv")

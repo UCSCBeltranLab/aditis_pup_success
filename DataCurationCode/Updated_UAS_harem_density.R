@@ -6,11 +6,11 @@ library(stringr)
 options(scipen = 999)
 sf_use_s2(FALSE)
 
-# Read beaches ------------------------------------------------------------
+# Read beaches 
 beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp", quiet = TRUE) %>%
   select(-id)
 
-# Picterra outputs (your dates already include "polygons.shp") ------------
+# Picterra outputs (already include "polygons.shp")
 base_dir <- "./RawData/Picterra_outputs_updated"
 
 # returns paths like "2016/polygons.shp", "20210129/polygons.shp", etc
@@ -75,7 +75,6 @@ for (d in unique(dates)) {
 
 density.df <- bind_rows(density.df)
 
-# Save data ---------------------------------------------------------------
 seal.density <- density.df %>%
   mutate(
     centroid = st_centroid(geometry),

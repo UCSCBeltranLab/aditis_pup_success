@@ -64,7 +64,7 @@ observed_data_2016_2023 <- intrinsic_2016_2023 %>%
 nd_by_age <- lapply(ages, \(A) transform(intrinsic_2016_2023, #retain covariate distribution
                                          AgeYears = A)) #set all seals to age A
 
-# 5) Post-stratified prediction curve (row predictions → weighted mean)
+# 5) Post-stratified prediction curve (row predictions -> weighted mean)
 post_curve <- function(fit, season = NULL){
   vapply(seq_along(nd_by_age), function(i){
     nd <- nd_by_age[[i]] #dataset for one age
@@ -330,10 +330,11 @@ check_collinearity(mod_int_weather_2016_2023) #check predictor VIFs
 pred_mod_int <- ggpredict(mod_int_weather_2016_2023,
                           terms = c("AgeYears [all]", "n_extreme_both [all]"))
 
-pred_df$n_extreme_both_num <- parse_number(as.character(pred_df$group))
+# make numeric for gradient
+pred_mod_int$n_extreme_both_num <- parse_number(as.character(pred_mod_int$group))
 
 # 2) Plot: ribbon + line, color gradient by n_extreme_both intensity
-ggplot(pred_df, aes(x = x, y = predicted, colour = n_extreme_both_num, group = group)) +
+ggplot(pred_mod_int, aes(x = x, y = predicted, color = n_extreme_both_num, group = group)) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = n_extreme_both_num),
               alpha = 0.12, color = NA) +
   geom_line(linewidth = 0.9, alpha = 0.85) +

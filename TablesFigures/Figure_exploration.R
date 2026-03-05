@@ -110,6 +110,15 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
        y = "Number of Extreme Wave and Tide Events") +
   theme_minimal()
 
+##per-year extreme wave and tide events bar plot
+ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
+  geom_bar(stat = "identity", fill = "lightpink") +
+  labs(x = "Year", 
+       y = "Number of extreme wave and tide events") +
+  theme_few() +
+  scale_y_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 20)
+
 ##proportion vs. extreme wave and tide
 ggplot(intrinsic_variables,
        aes(x = n_extreme_both, y = proportion)) +
