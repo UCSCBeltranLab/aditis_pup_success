@@ -162,13 +162,13 @@ observed_extreme_2016_2023 <- intrinsic_2016_2023 %>%
             .groups = "drop")
 
 # 3) standardized newdata for overall post-stratified curve
-nd_by_extreme <- lapply(extreme_vals, function(E) {
-  transform(intrinsic_2016_2023, n_extreme_both = E)
+nd_by_extreme <- lapply(extreme_vals, function(e) {
+  transform(intrinsic_2016_2023, n_extreme_both = e)
 })
 
 post_curve_extreme <- function(fit) {
-  vapply(seq_along(nd_by_extreme), function(i) {
-    nd <- nd_by_extreme[[i]]
+  vapply(seq_along(nd_by_extreme), function(e) {
+    nd <- nd_by_extreme[[e]]
     p <- predict(fit, newdata = nd, type = "response", re.form = NULL)
     weighted.mean(p, w = nd$total_resights, na.rm = TRUE)
   }, numeric(1))

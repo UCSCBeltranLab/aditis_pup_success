@@ -1,12 +1,11 @@
 ############ facet the two age figures together ###########
 
-plot_age <- plot_grid(
-  plot_age_1996_2025,
-  plot_age_2016_2023,
-  ncol = 1,
-  align = "v",
-  axis = "lr",
-  rel_heights = c(1, 1))
+plot_age <- plot_grid(plot_age_1996_2025,
+                      plot_age_2016_2023,
+                      ncol = 1,
+                      align = "v",
+                      axis = "lr",
+                      rel_heights = c(1, 1))
 
 plot_age
 
@@ -125,9 +124,7 @@ conceptual_MOA_plot <- ggplot(plot_df_full, aes(x = day_index, y = y, fill = pup
         axis.ticks.y = element_blank(),
         axis.line.y = element_blank(),
         panel.spacing.y = unit(0.8, "lines"),
-        legend.position = "right")
-
-conceptual_MOA_plot
+        legend.position = "right"); conceptual_MOA_plot
 
 # optional save
 ggsave("./TablesFigures/conceptual_MOA_plot.png",
