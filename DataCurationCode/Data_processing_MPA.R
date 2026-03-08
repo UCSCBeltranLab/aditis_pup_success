@@ -16,6 +16,8 @@ library(parallel)
 library(binom)
 library(gt)
 library(flextable)
+library(grid)
+library(cowplot)
 
 ################################ Defining MPA + intrinsic data processing ###############################
 

@@ -117,7 +117,7 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
        y = "Number of extreme wave and tide events") +
   theme_few() +
   scale_y_continuous(n.breaks = 10) +
-  scale_x_continuous(n.breaks = 20)
+  scale_x_continuous(n.breaks = 23)
 
 ##proportion vs. extreme wave and tide
 ggplot(intrinsic_variables,
@@ -174,48 +174,101 @@ ggplot(intrinsic_variables, aes(x = season_fct, y = proportion)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-################## Plots for Marm: exploring random effect of season ######################
+################## Colors for season effects (age and density) ######################
 
-intrinsic_variables <- intrinsic_variables %>%
-  mutate(season_fct = factor(season, levels = sort(unique(season))))
+### density ###
 
-#age faceted by season
-ggplot(intrinsic_variables,
-       aes(x = AgeYears, y = proportion, color = season_fct)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(se = FALSE) +
-  facet_wrap(~ season_fct) +
-  labs(x = "Age (years)", 
-       y = "MOA", 
-       color = "Season") +
-  theme_minimal()
+season_pal <- c("#F4A3A3","#F6C177", "#F9E2AF", "#A6D189","#81C8BE", "#8CAAEE","#9CC7E4", "#F5BDE6")
+names(season_pal) <- levels(intrinsic_2016_2023$season_fct)
 
-#age colored by season
-ggplot(intrinsic_variables,
-       aes(x = AgeYears, y = proportion, color = season_fct)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(x = "Maternal age (years)", 
-       y = "MOA") +
-  theme_minimal()
+plot_density_by_season <- ggplot(intrinsic_2016_2023,
+                                 aes(avg_density, proportion, color = season_fct)) +
+  geom_point(
+    alpha = 0.45, size = 2,
+    position = position_jitter(height = 0.008, width = 0)
+  ) +
+  geom_ribbon(
+    data = pred_density_2016_2023,
+    aes(x = x, ymin = conf.low, ymax = conf.high),
+    fill = "navy", alpha = 0.18, inherit.aes = FALSE
+  ) +
+  geom_line(
+    data = pred_density_2016_2023,
+    aes(x = x, y = predicted),
+    color = "navy", linewidth = 1.2, inherit.aes = FALSE
+  ) +
+  scale_color_manual(values = season_pal, name = "Season") +
+  coord_cartesian(ylim = c(0, 1)) +
+  theme_few() +
+  labs(
+    x = "Within-colony location density",
+    y = "Mother-offspring association"
+  )
 
-#avg density colored by season
-ggplot(intrinsic_variables,
-       aes(x = avg_density, y = proportion, color = season_fct)) +
-  geom_point(alpha = 0.5, size = 1.8) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(x = "Average harem density",
-       y = "MOA",
-       color = "Season") +
-  theme_minimal()
+plot_density_by_season
 
-#number of extreme wave and tide events colored by season
-ggplot(intrinsic_variables,
-       aes(x = n_extreme_both, y = proportion, color = season)) +  
-  geom_point(alpha = 0.6, size = 2) +
-  geom_smooth(method = "lm", se = TRUE, color = "black") +
-  scale_color_viridis_c(option = "mako") +
-  labs(x = "Number of extreme wave + tide events", 
-       y = "MOA", 
-       color = "Season") +
-  theme_minimal()
+# age with season colored
+plot_age_season_col_2016_2023 <- ggplot() +
+  geom_line(
+    data = season_lines_2016_2023,
+    aes(AgeYears, pred, group = season_fct, color = season_fct),
+    alpha = 0.45
+  ) +
+  geom_ribbon(
+    data = ci_2016_2023,
+    aes(AgeYears, ymin = lo, ymax = hi),
+    fill = "#83C05A", alpha = 0.28
+  ) +
+  geom_line(
+    data = ci_2016_2023,
+    aes(AgeYears, pred),
+    color = "#83C05A", linewidth = 1.2
+  ) +
+  geom_pointrange(
+    data = observed_data_2016_2023,
+    aes(AgeYears, avg_prop, ymin = lwr, ymax = upr),
+    color = "black"
+  ) +
+  geom_text(
+    data = observed_data_2016_2023,
+    aes(AgeYears, 1.01, label = n_age),
+    vjust = -0.5
+  ) +
+  scale_color_manual(values = season_pal, name = "Season") +
+  scale_x_continuous(breaks = ages) +
+  coord_cartesian(ylim = c(0.75, 1.02), clip = "off") +
+  theme_few() +
+  labs(x = "Age (Years)", y = "Mother-offspring association")
+
+plot_age_season_col_2016_2023
+
+#age with season colored for piecewise
+
+
+############### Extreme event model plot with color jitter by season ############
+
+# 1) predicted effect of extreme events by season
+pred_extreme_2016_2023 <- ggpredict(mod_binom_2016_2023,
+                                    terms = c("n_extreme_both [all]", "season_fct"))
+
+# 2) force season order in the raw data
+intrinsic_2016_2023 <- intrinsic_2016_2023 %>%
+  mutate(season_fct = factor(season_fct,
+                             levels = sort(unique(as.numeric(as.character(season_fct))))))
+
+# 3) force the same order in ggpredict output (its season column is `group`)
+pred_extreme_2016_2023$group <- factor(pred_extreme_2016_2023$group, levels = seasons)
+
+# 5) plot: points + ribbons + lines, with ordered legend
+ggplot(pred_extreme_2016_2023, aes(x = x, y = predicted, group = group, color = group, fill = group)) +
+  geom_jitter(data = intrinsic_2016_2023,
+              aes(x = n_extreme_both, y = proportion, color = season_fct),
+              alpha = 0.6, size = 2, inherit.aes = FALSE) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              alpha = 0.12, color = NA, fill = "#A30B37") +
+  geom_line(linewidth = 1.2, color = "#A30B37") +
+  scale_color_manual(values = pal, breaks = seasons, name = "Year") +
+  scale_fill_manual(values = pal, breaks = seasons, name = "Year") +
+  labs(x = "Number of extreme wave and tide events",
+       y = "Mother-offspring association") +
+  theme_few()

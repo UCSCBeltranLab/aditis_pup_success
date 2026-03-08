@@ -45,11 +45,11 @@ plot(ggpredict(mod_binom_exp_2016_2023, terms = "experience_prior"))
 
 ### Linear age figure ###
 
-# 2) Define x-axis ages and seasons used for season-specific curves
+# 1) Define x-axis ages and seasons used for season-specific curves
 ages <- sort(unique(intrinsic_2016_2023$AgeYears)) #unique ages present (x values)
 seasons <- levels(intrinsic_2016_2023$season_fct) #season factor levels used in predictions
 
-# 3) Compute pooled observed proportion by age (black points + binomial CIs)
+# 2) Compute pooled observed proportion by age (black points + binomial CIs)
 observed_data_2016_2023 <- intrinsic_2016_2023 %>%
   group_by(AgeYears) %>% #group by rows within each age
   summarise(n_age = n(), #sample size at each age for labels
@@ -60,27 +60,27 @@ observed_data_2016_2023 <- intrinsic_2016_2023 %>%
             upr = binom.test(n_success, n_trials)$conf.int[2], #binomial CI upper
             .groups = "drop")
 
-# 4) Build standardized newdata for each age for post-stratification
+# 3) Build standardized newdata for each age for post-stratification
 nd_by_age <- lapply(ages, \(A) transform(intrinsic_2016_2023, #retain covariate distribution
                                          AgeYears = A)) #set all seals to age A
 
-# 5) Post-stratified prediction curve (row predictions -> weighted mean)
+# 4) Post-stratified prediction curve (row predictions -> weighted mean)
 post_curve <- function(fit, season = NULL){
-  vapply(seq_along(nd_by_age), function(i){
-    nd <- nd_by_age[[i]] #dataset for one age
+  vapply(seq_along(nd_by_age), function(a){
+    nd <- nd_by_age[[a]] #dataset for one age
     if(!is.null(season)) nd$season_fct <- factor(season, levels = seasons) #force season level
     p <- predict(fit, newdata = nd, type = "response", re.form = NULL) #predict including all RE
     weighted.mean(p, w = nd$total_resights, na.rm = TRUE) #total resight weighted mean
   }, numeric(1))
 }
 
-# 6) Thin season curves (one post-stratified curve per season)
+# 5) Thin season curves (one post-stratified curve per season)
 season_lines_2016_2023 <- bind_rows(lapply(seasons, \(S)
                                            tibble(season_fct = S, #season grouping
                                                   AgeYears = ages, #x-axis
                                                   pred = post_curve(mod_binom_2016_2023, season = S)))) #season-specific predictions
 
-# 7) Overall curve + parametric bootstrap CI
+# 6) Overall curve + parametric bootstrap CI
 set.seed(123) #set for reproducibility
 nsim <- 100 #bootstrap draws
 post_curve_overall <- function(fit) post_curve(fit, season = NULL) #overall curve
@@ -92,22 +92,22 @@ overall_2016_2023 <- tibble(AgeYears = ages,
 boot_2016_2023 <- bootMer(mod_binom_2016_2023, FUN = post_curve_overall,
                           nsim = nsim, type = "parametric", use.u = FALSE) #parametric bootstrap
 
-# 8) Convert bootstrap draws into 95% CI ribbon
+# 7) Convert bootstrap draws into 95% CI ribbon
 ci_2016_2023 <- overall_2016_2023 %>%
   mutate(lo = apply(boot_2016_2023$t, 2, quantile, 0.025, na.rm = TRUE), #lower CI
          hi = apply(boot_2016_2023$t, 2, quantile, 0.975, na.rm = TRUE)) #upper CI
 
-# 9) Plot: thin season curves + bootstrap ribbon + mean curve + observed data
-ggplot() +
+# 8) Plot: thin season curves + bootstrap ribbon + mean curve + observed data
+plot_age_2016_2023 <- ggplot() +
   geom_line(data = season_lines_2016_2023, #thin season-specific curves
             aes(AgeYears, pred, group = season_fct),
-            color = "navy", alpha = 0.25) +
+            color = "#548045", alpha = 0.25) +
   geom_ribbon(data = ci_2016_2023, #bootstrap CI band
               aes(AgeYears, ymin = lo, ymax = hi),
-              fill = "#92BAEE", alpha = 0.28) +
+              fill = "#83C05A", alpha = 0.28) +
   geom_line(data = ci_2016_2023, #overall predicted curve
             aes(AgeYears, pred),
-            color = "#7299D3", linewidth = 1.2) +
+            color = "#83C05A", linewidth = 1.2) +
   geom_pointrange(data = observed_data_2016_2023, #observed pooled proportions
                   aes(AgeYears, avg_prop, ymin = lwr, ymax = upr),
                   color = "black") +
@@ -115,68 +115,110 @@ ggplot() +
             aes(AgeYears, 1.01, label = n_age),
             vjust = -0.5) +
   scale_x_continuous(breaks = ages) +
-  coord_cartesian(ylim = c(0.75, 1.01), clip = "off") +
+  coord_cartesian(ylim = c(0.75, 1.02), clip = "off") +
   theme_few() +
-  labs(x = "Age (Years)", y = "Mother-offspring association")
+  labs(x = "Age (Years)", y = "Mother-offspring association"); plot_age_2016_2023
 
-### plot effects of density ###
+### density plot ###
 
 # 1) predicted effect of density on flipped proportion
 pred_density_2016_2023 <- ggpredict(mod_binom_2016_2023, terms = "avg_density [all]")
 
 # 2) plot flipped proportion and average density
-ggplot(data = pred_density_2016_2023, aes(x = x, y = predicted)) +
-  
-  #Raw points
-  geom_point(data = intrinsic_2016_2023,
-             aes(x = avg_density, y = proportion),
-             color = "#583478",
-             alpha = 0.4,
+plot_density <- ggplot(intrinsic_2016_2023, aes(avg_density, proportion)) +
+  geom_point(alpha = 0.35,
              size = 2,
-             inherit.aes = FALSE) +
-  
-  #Confidence ribbon
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
-              fill = "#5E397F",
-              alpha = 0.3) +
-  
-  #Prediction line
-  geom_line(color = "#976ABF",
+             color = "#6A3D9A") +
+  geom_ribbon(data = pred_density_2016_2023,
+              aes(x = x, ymin = conf.low, ymax = conf.high),
+              fill = "#6A3D9A",
+              alpha = 0.25,
+              inherit.aes = FALSE) +
+  geom_line(data = pred_density_2016_2023,
+            aes(x = x, y = predicted),
+            color = "#6A3D9A",
+            linewidth = 1.4,
+            inherit.aes = FALSE) +
+  coord_cartesian(ylim = c(0,1)) +
+  theme_few() + 
+  labs(x = "Within-colony location density",
+       y = "Mother–offspring association"); plot_density
+
+### extreme events plot ###
+
+# 1) Define x-axis n_extreme_both vals and seasons used for season-specific curves
+extreme_vals <- sort(unique(intrinsic_2016_2023$n_extreme_both))
+seasons <- levels(intrinsic_2016_2023$season_fct)
+
+# 2) pooled observed proportion by n_extreme_both
+observed_extreme_2016_2023 <- intrinsic_2016_2023 %>%
+  group_by(n_extreme_both) %>%
+  summarise(n_obs = n(),
+            n_success = sum(count_1_pup, na.rm = TRUE),
+            n_trials = sum(total_resights, na.rm = TRUE),
+            avg_prop = n_success / n_trials,
+            lwr = binom.test(n_success, n_trials)$conf.int[1],
+            upr = binom.test(n_success, n_trials)$conf.int[2],
+            .groups = "drop")
+
+# 3) standardized newdata for overall post-stratified curve
+nd_by_extreme <- lapply(extreme_vals, function(E) {
+  transform(intrinsic_2016_2023, n_extreme_both = E)
+})
+
+post_curve_extreme <- function(fit) {
+  vapply(seq_along(nd_by_extreme), function(i) {
+    nd <- nd_by_extreme[[i]]
+    p <- predict(fit, newdata = nd, type = "response", re.form = NULL)
+    weighted.mean(p, w = nd$total_resights, na.rm = TRUE)
+  }, numeric(1))
+}
+
+# 4) overall curve + bootstrap CI
+set.seed(123)
+nsim <- 100
+
+overall_extreme_2016_2023 <- tibble(n_extreme_both = extreme_vals,
+                                    pred = post_curve_extreme(mod_binom_2016_2023))
+
+boot_extreme_2016_2023 <- bootMer(mod_binom_2016_2023,
+                                  FUN = post_curve_extreme,
+                                  nsim = nsim,
+                                  type = "parametric",
+                                  use.u = FALSE)
+
+ci_extreme_2016_2023 <- overall_extreme_2016_2023 %>%
+  mutate(lo = apply(boot_extreme_2016_2023$t, 2, quantile, 0.025, na.rm = TRUE),
+         hi = apply(boot_extreme_2016_2023$t, 2, quantile, 0.975, na.rm = TRUE))
+
+# 5) season colors for raw points
+pal <- c("#F4A3A3","#F6C177","#F9E2AF","#A6D189","#81C8BE","#8CAAEE","#9CC7E4", "#F5BDE6" )
+
+# 6) Plot: n_extreme_both with observed points and CIs colored by season
+plot_n_extreme <- ggplot() +
+  geom_pointrange(data = intrinsic_2016_2023 %>%
+                    group_by(season_fct, n_extreme_both) %>%
+                    summarise(n_success = sum(count_1_pup, na.rm = TRUE),
+                              n_trials = sum(total_resights, na.rm = TRUE),
+                              avg_prop = n_success / n_trials,
+                              lwr = binom.test(n_success, n_trials)$conf.int[1],
+                              upr = binom.test(n_success, n_trials)$conf.int[2],
+                              .groups = "drop"),
+    aes(x = n_extreme_both, y = avg_prop, ymin = lwr, ymax = upr, color = season_fct), linewidth = 0.7) +
+  geom_ribbon(data = ci_extreme_2016_2023,
+              aes(x = n_extreme_both, ymin = lo, ymax = hi),
+              fill = "#A49CE4",
+              alpha = 0.28) +
+  geom_line(data = ci_extreme_2016_2023,
+            aes(x = n_extreme_both, y = pred),
+            color = "#BBB6DF",
             linewidth = 1.2) +
-  coord_cartesian(ylim = c(0, 1), expand = TRUE) +
-  labs(x = "Wthin-colony location density",
-       y = "Mother-offspring association") +
-  theme_few()
-
-# 1) predicted effect of extreme events by season
-pred_extreme_2016_2023 <- ggpredict(mod_binom_2016_2023,
-                                    terms = c("n_extreme_both [all]", "season_fct"))
-
-# 2) force season order in the raw data
-intrinsic_2016_2023 <- intrinsic_2016_2023 %>%
-  mutate(season_fct = factor(season_fct,
-                             levels = sort(unique(as.numeric(as.character(season_fct))))))
-
-# 3) force the same order in ggpredict output (its season column is `group`)
-pred_extreme_2016_2023$group <- factor(pred_extreme_2016_2023$group, levels = seasons)
-
-# 4) pink→green palette (named + ordered)
-pal <- setNames(colorRampPalette(c("#D1497A", "#E07A9A", "#7FC97F", "#2E8B57"))(length(seasons)),
-                seasons) #season-specific colors
-
-# 5) plot: points + ribbons + lines, with ordered legend
-ggplot(pred_extreme_2016_2023, aes(x = x, y = predicted, group = group, color = group, fill = group)) +
-  geom_point(data = intrinsic_2016_2023,
-             aes(x = n_extreme_both, y = proportion, color = season_fct),
-             alpha = 0.6, size = 2, inherit.aes = FALSE) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
-              alpha = 0.12, colour = NA) +
-  geom_line(linewidth = 1.2) +
-  scale_color_manual(values = pal, breaks = seasons, name = "Year") +
-  scale_fill_manual(values = pal, breaks = seasons, name = "Year") +
+  scale_color_manual(values = pal, name = "Season") +
+  scale_x_continuous(n.breaks = 10) +
+  coord_cartesian(ylim = c(0.75, 1.01), clip = "off") +
+  theme_few() +
   labs(x = "Number of extreme wave and tide events",
-       y = "Mother-offspring association") +
-  theme_few()
+       y = "Mother-offspring association"); plot_n_extreme
 
 ############# 1b) 1996-2025 full dataset model for age ###############
 
@@ -224,8 +266,8 @@ nd_by_age <- lapply(ages, \(A) transform(intrinsic_variables, #start from full d
 # 5) Post-stratified curve: predict for each age, then compute weighted average using total_resights
 # season = NULL gives overall curve, season ="" forces season RE for thin curves
 post_curve <- function(fit, season = NULL) {
-  vapply(seq_along(nd_by_age), function(i){ #loop over ages
-    nd <- nd_by_age[[i]] #newdata for one age
+  vapply(seq_along(nd_by_age), function(a){ #loop over ages
+    nd <- nd_by_age[[a]] #newdata for one age
     if(!is.null(season)) nd$season_fct <- factor(season, levels = seasons) #force all rows to a single season level
     p <- predict(fit, newdata = nd, type = "response", re.form = NULL) #predict probability including all random effects
     weighted.mean(p, w = nd$total_resights, na.rm = TRUE) #post-stratified mean, weighted by total resights
@@ -263,7 +305,7 @@ season_lines_1996_2025 <- season_lines_1996_2025 %>%
          seg = age_cat) #keep seg consistent
 
 # 10) Make age plot: thin season curves + bootstrap ribbon + weighted mean line + observed avg points for each age + threshold line + sample size labels
-ggplot() +
+plot_age_1996_2025 <- ggplot() +
   geom_line(data = season_lines_1996_2025, #thin season-specific curves for context
             aes(AgeYears, pred, group = interaction(season_fct, seg), color = age_cat), #separate lines
             alpha = 0.28) +
@@ -285,13 +327,13 @@ ggplot() +
            x = age_senesce - 0.5,
            y = 0.78, label = "Age threshold (9 years)",
            angle = 90, vjust = -0.8, size = 3.5) +
-  coord_cartesian(ylim = c(0.75, 1.01), clip = "off") +
+  coord_cartesian(ylim = c(0.75, 1.02), clip = "off") +
   geom_text(data = observed_data_1996_2025, aes(AgeYears, 1.01, label = n_age), vjust = -0.5) + #sample size labels per age
   scale_color_manual(name = "Age class", values = COL) +
   scale_fill_manual(name = "Age class", values = COL) +
   scale_x_continuous(breaks = ages) +
   theme_few() +
-  labs(x = "Age (Years)", y = "Mother-offspring association")
+  labs(x = "Age (Years)", y = "Mother-offspring association"); plot_age_1996_2025
 
 #################### 1c) Interaction models with age, extreme events, density ##########################
 
@@ -545,11 +587,11 @@ thr_res <- map_dfr(cutoff, \(a){
              data = d)
   
   #coefficient table
-  tab <- as.data.frame(summary(m)$coefficients$cond) %>%
+  tab <- as.data.frame(summary(m)$coefficients) %>%
     rownames_to_column("term")
   
   #interaction term = slope of age10 for Old
-  term_name <- "age_catOld : age10"
+  term_name <- "age_catOld:age10"
   
   row <- filter(tab, term == term_name)
   
@@ -558,11 +600,11 @@ thr_res <- map_dfr(cutoff, \(a){
          se = row$`Std. Error`,
          p = 2 * pnorm(abs(row$`z value`), lower.tail = FALSE))
 }) %>%
-  mutate(si = p <= 0.05, # flag significance
+  mutate(sig = p <= 0.05, # flag significance
          logp_cap = pmin(-log10(p), 5)) # point size weighted by p
 
 # Plot: coefficient ± 95% CI; bigger points = smaller p; color = significance
-ggplot(thr_res, aes(age_cutoff, coef)) +
+threshold_comparison_figure <- ggplot(thr_res, aes(age_cutoff, coef)) +
   geom_hline(yintercept = 0, linetype = "dashed") +  # no post-threshold slope
   geom_pointrange(aes(ymin = coef - 1.96 * se,
                       ymax = coef + 1.96 * se,
@@ -575,7 +617,7 @@ ggplot(thr_res, aes(age_cutoff, coef)) +
   scale_x_continuous(breaks = cutoff) +
   labs(x = "Senescence threshold",
        y = "Estimated old slope (log-odds)") +
-  theme_classic()
+  theme_classic(); threshold_comparison_figure
 
 ############### Individual level consistency figures (individual ID effects) ###############
 
