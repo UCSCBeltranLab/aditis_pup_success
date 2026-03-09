@@ -1,19 +1,25 @@
 ############ facet the two age figures together ###########
 
-plot_age <- plot_grid(plot_age_1996_2025,
-                      plot_age_2016_2023,
-                      ncol = 1,
-                      align = "v",
-                      axis = "lr",
-                      rel_heights = c(1, 1))
+plot_age <- plot_grid(
+  plot_age_1996_2025,
+  plot_age_2016_2023,
+  ncol = 1,
+  align = "v",
+  axis = "lr",
+  rel_heights = c(1, 1),
+  labels = c("(a)", "(b)"),
+  label_size = 14,
+  label_fontface = "bold",
+  label_colour = "black",
+  label_x = 0.02,
+  label_y = 0.98,
+  hjust = 0,
+  vjust = 1
+)
 
 plot_age
 
-ggsave("./TablesFigures/age_plot.png",
-       plot = plot_age,
-       width = 16,
-       height = 20,
-       dpi = 1000)
+ggsave("./TablesFigures/age_plots.png", plot_age, width = 8, height = 10, dpi = 600)
 
 ############ conceptual MOA figure #########
 

@@ -144,6 +144,8 @@ plot_density <- ggplot(intrinsic_2016_2023, aes(avg_density, proportion)) +
   labs(x = "Within-colony location density",
        y = "Mother–offspring association"); plot_density
 
+ggsave("./TablesFigures/plot_density.png", plot_density, width = 8, height = 10, dpi = 600)
+
 ### extreme events plot ###
 
 # 1) Define x-axis n_extreme_both vals and seasons used for season-specific curves
@@ -213,12 +215,14 @@ plot_n_extreme <- ggplot() +
             aes(x = n_extreme_both, y = pred),
             color = "#BBB6DF",
             linewidth = 1.2) +
-  scale_color_manual(values = pal, name = "Season") +
+  scale_color_manual(values = pal, name = "Year") +
   scale_x_continuous(n.breaks = 10) +
   coord_cartesian(ylim = c(0.75, 1.01), clip = "off") +
   theme_few() +
   labs(x = "Number of extreme wave and tide events",
        y = "Mother-offspring association"); plot_n_extreme
+
+ggsave("./TablesFigures/plot_extreme_events.png", plot_n_extreme, width = 8, height = 10, dpi = 600)
 
 ############# 1b) 1996-2025 full dataset model for age ###############
 
@@ -460,7 +464,7 @@ aic_table_1996_2025 <- flextable(aic_table_1996_2025) %>%
        part = "body"); aic_table_1996_2025
 
 #save final table
-save_as_docx(aic_table_1996_2025, path = "1996_2025_Age_Predictor_Comparison.docx")
+save_as_docx(aic_table_1996_2025, path = "./TablesFigures/1996_2025_Age_Predictor_Comparison.docx")
 
 ########## 2b) 2016-2023 linear vs. quadratic vs. piecewise model AIC comparison ###################
 
@@ -515,7 +519,7 @@ aic_table_2016_2023 <- flextable(aic_table_2016_2023) %>%
        part = "body"); aic_table_2016_2023
 
 #save final table
-save_as_docx(aic_table_2016_2023, path = "2016_2023_Age_Predictor_Comparison.docx")
+save_as_docx(aic_table_2016_2023, path = "./TablesFigures/2016_2023_Age_Predictor_Comparison.docx")
 
 ############ 3a) age threshold AIC comparison table ####################
 
@@ -563,7 +567,7 @@ threshold_comparison_tbl <- flextable(threshold_comparison_tbl) %>%
   align(align = "center", part = "all") %>%
   bold(i = which(threshold_comparison_tbl$Threshold == 9), part = "body"); threshold_comparison_tbl
 
-save_as_docx(threshold_comparison_tbl, path = "AIC_Threshold_Comparison.docx")
+save_as_docx(threshold_comparison_tbl, path = "./TablesFigures/AIC_Threshold_Comparison.docx")
 
 ############# 3b) age threshold significance comparison figure #################
 
@@ -618,6 +622,8 @@ threshold_comparison_figure <- ggplot(thr_res, aes(age_cutoff, coef)) +
   labs(x = "Senescence threshold",
        y = "Estimated old slope (log-odds)") +
   theme_classic(); threshold_comparison_figure
+
+ggsave("./TablesFigures/threshold_comparison_figure.png", threshold_comparison_figure, width = 8, height = 10, dpi = 600)
 
 ############### Individual level consistency figures (individual ID effects) ###############
 
@@ -865,11 +871,11 @@ ind_consistency_age_strat <- ind_consistency_age %>%
 #   - y-axis: age-normalized consistency
 #   - vertical dashed lines: thresholds for mean association
 #   - horizontal dashed line: threshold for high consistency
-ggplot(ind_consistency_age_strat,
+consistency_figure <- ggplot(ind_consistency_age_strat,
        aes(x = mean_assoc, y = consistency_dev, color = strategy_cross)) +
   geom_point(aes(size = n_obs_total, alpha = 0.8)) +
-  geom_vline(xintercept = 0.7, linetype = "dashed", color = "grey60") +
-  geom_hline(yintercept = cons_thresh, linetype = "dashed", color = "grey60") +
+  geom_vline(xintercept = 0.7, size = 0.6, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = cons_thresh, size = 0.6, linetype = "dashed", color = "grey60") +
   scale_color_manual(values = c(
     "Consistently above peers"  = "#1f78b4",
     "Inconsistent above peers"  = "#6F73D2",
@@ -877,19 +883,18 @@ ggplot(ind_consistency_age_strat,
     "Inconsistent below peers"  = "#B74F6F"
   )) +
   scale_size_continuous(name = "Total observations", range = c(2, 10)) +
-  labs(
-    x     = "Mean maternal association (0–1)",
-    y     = "Consistency in deviation from age mean",
-    color = "Age-normalized\nstrategy class",
-    title = "Age-normalized maternal strategies",
-    subtitle = "Deviation from age peers (x-axis) and consistency in that deviation (y-axis)"
-  ) +
+  labs(x     = "Mean maternal association (0–1)",
+       y     = "Consistency in deviation from age mean",
+       color = "Age-normalized\nstrategy class",
+       title = "Age-normalized maternal strategies",
+       subtitle = "Deviation from age peers (x-axis) and consistency in that deviation (y-axis)") +
+  guides(alpha = "none") +
   theme_minimal(base_size = 14) +
-  theme(
-    legend.position = "top",
-    legend.box      = "vertical",
-    legend.title    = element_text(face = "bold")
-  )
+  theme(legend.position = "top",
+        legend.box = "vertical",
+        legend.title = element_text(face = "bold")); consistency_figure
+
+ggsave("./TablesFigures/consistency_figure.png", consistency_figure, width = 10, height = 8, dpi = 600)
 
 ## check who the most consistent individuals are!
 ind_consistency_age$animalID_fct[ind_consistency_age$strategy_cross == "Consistently above peers"]
