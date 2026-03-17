@@ -6,6 +6,8 @@ source("./DataCurationCode/Data_processing_MPA.R")
 ##The first model includes all predictors with a smaller subset of data (2016-2023)
 ##The second model allows us to test for senescence/non-linearity of the age predictor using the full dataset (1996-2025)
 
+##Marm in case you're wondering why I don't just use a single dataframe for all the models - it's just for figure making consistency!
+
 ########## 1a) 2016-2023 subset model with all predictors ###############
 
 # 1) Subset the data for only seasons 2016 - 2023
@@ -121,14 +123,17 @@ plot_age_2016_2023 <- ggplot() +
 
 ########### Density figure ##############
 
+# Set plotting colors for seasons
+pal <- c("#E57373","#E6A64C","#E5C76B","#7FBF7B","#2E7D32","#5C7EE5","#6DAEDB","#D77CC8")
+
 # 1) Define x-axis density values across the observed range
 density_vals <- seq(min(intrinsic_2016_2023$avg_density, na.rm = TRUE), #minimum observed density
                     max(intrinsic_2016_2023$avg_density, na.rm = TRUE), #maximum observed density
                     length.out = 100) #number of x-axis values for smooth curve
 
 # 2) Build standardized newdata for each density value D (for post-stratification)
-# For each D, keep the full covariate mix of intrinsic_2016_2023 but overwrite avg_density as if everyone had density D
-nd_by_density <- lapply(density_vals, \(D) transform(intrinsic_2016_2023, #start from full dataset to preserve covariate distribution and weights
+# For each D, keep the full predictors of intrinsic_2016_2023 but overwrite avg_density as if everyone had density D
+nd_by_density <- lapply(density_vals, \(D) transform(intrinsic_2016_2023, #preserve covariate distribution and weights
                                                      avg_density = D)) #overwrite avg_density so every row is evaluated at density D
 
 # 3) Post-stratified curve: predict for each density, then compute weighted average using total_resights
@@ -147,8 +152,8 @@ nsim <- 100 #number of bootstrap simulations (can increase if needed, but it tak
 overall_density_2016_2023 <- tibble(avg_density = density_vals, #continuous density values
                                     pred = post_curve_density(mod_binom_2016_2023)) #overall post-stratified predictions
 
-boot_density_2016_2023 <- bootMer(mod_binom_2016_2023, FUN = post_curve_density, nsim = nsim, #bootstrap curves by refitting/simulating
-                                  type = "parametric", use.u = FALSE) #parametric bootstrap = resimulate random effects each time
+boot_density_2016_2023 <- bootMer(mod_binom_2016_2023, FUN = post_curve_density, nsim = nsim, #bootstrap curves
+                                  type = "parametric", use.u = FALSE) #parametric bootstrap = simulate ranef each time
 
 # 5) Turn bootstrap curves into 95% CI bands
 ci_density_2016_2023 <- overall_density_2016_2023 %>%
@@ -185,54 +190,51 @@ ggsave("./TablesFigures/plot_density.png", plot_density, width = 14, height = 12
 
 ########### Extreme events figure ############
 
-# 1) Define x-axis extreme-event values and seasons used for plotting
-extreme_vals <- sort(unique(intrinsic_2016_2023$n_extreme_both)) #unique extreme-event counts present in data
+# 1) Define x-axis extreme event values and seasons used for plotting
+extreme_vals <- sort(unique(intrinsic_2016_2023$n_extreme_both)) #unique extreme event counts present in data
 seasons <- levels(intrinsic_2016_2023$season_fct) #factor levels for seasons (used for plotting colors)
 
-# 2) Compute observed proportion by extreme-event count and season (colored points + binomial CI whiskers)
+# 2) Compute observed proportion by extreme event count and season (colored points + binomial CI whiskers)
 observed_extreme_2016_2023 <- intrinsic_2016_2023 %>%
   group_by(n_extreme_both, season_fct) %>%
-  summarise(n_obs = n(), #sample size at each extreme-event count within season
-            n_success = sum(count_1_pup, na.rm = TRUE), #total successes at each extreme-event count within season
-            n_trials = sum(total_resights, na.rm = TRUE), #total trials/effort at each extreme-event count within season
-            avg_prop = n_success / n_trials, #pooled observed proportion at each extreme-event count within season
-            lwr = binom.test(n_success, n_trials)$conf.int[1], #exact binomial CI lower bound
-            upr = binom.test(n_success, n_trials)$conf.int[2], #exact binomial CI upper bound
-            .groups = "drop") #return ungrouped tibble
+  summarise(n_obs = n(), #sample size at each extreme event count within season
+            n_success = sum(count_1_pup, na.rm = TRUE), #total successes at each extreme event count within season
+            n_trials = sum(total_resights, na.rm = TRUE), #total resights at each extreme event count within season
+            avg_prop = n_success / n_trials, #pooled observed proportion at each extreme event count within season
+            lwr = binom.test(n_success, n_trials)$conf.int[1], #CI lower
+            upr = binom.test(n_success, n_trials)$conf.int[2], #CI upper
+            .groups = "drop") 
 
-# 3) Build standardized newdata for each extreme-event count E (for post-stratification)
+# 3) Build standardized newdata for each extreme event count E (for post-stratification)
 # For each E, keep the full covariate mix of intrinsic_2016_2023 but overwrite n_extreme_both as if everyone experienced E events
 nd_by_extreme <- lapply(extreme_vals, \(E) transform(intrinsic_2016_2023, #start from full dataset to preserve covariate distribution and weights
                                                      n_extreme_both = E)) #overwrite n_extreme_both so every row is evaluated at event count E
 
-# 4) Post-stratified curve: predict for each extreme-event count, then compute weighted average using total_resights
+# 4) Post-stratified curve: predict for each extreme event count, then compute weighted average using total_resights
 post_curve_extreme <- function(fit) {
-  vapply(seq_along(nd_by_extreme), function(e){ #loop over extreme-event counts
-    nd <- nd_by_extreme[[e]] #newdata for one extreme-event count
+  vapply(seq_along(nd_by_extreme), function(e){ #loop over extreme event counts
+    nd <- nd_by_extreme[[e]] #newdata for one extreme event count
     p <- predict(fit, newdata = nd, type = "response", re.form = NULL) #predict probability including all random effects
     weighted.mean(p, w = nd$total_resights, na.rm = TRUE) #post-stratified mean, weighted by total resights
   }, numeric(1)) #numeric vector of predictions across extreme-event counts
 }
 
-# 5) Bootstrap CI for the overall extreme-event curve using parametric bootstrapping of the fitted GLMM
+# 5) Bootstrap CI for the overall extreme event curve using parametric bootstrapping of the fitted GLMM
 set.seed(123)
 nsim <- 100 #number of bootstrap simulations (can increase if needed, but it takes longer)
 
-overall_extreme_2016_2023 <- tibble(n_extreme_both = extreme_vals, #discrete extreme-event counts
+overall_extreme_2016_2023 <- tibble(n_extreme_both = extreme_vals, #discrete extreme event counts
                                     pred = post_curve_extreme(mod_binom_2016_2023)) #overall post-stratified predictions
 
-boot_extreme_2016_2023 <- bootMer(mod_binom_2016_2023, FUN = post_curve_extreme, nsim = nsim, #bootstrap curves by refitting/simulating
-                                  type = "parametric", use.u = FALSE) #parametric bootstrap = resimulate random effects each time
+boot_extreme_2016_2023 <- bootMer(mod_binom_2016_2023, FUN = post_curve_extreme, nsim = nsim, #bootstrap curves
+                                  type = "parametric", use.u = FALSE) #parametric bootstrap = simulate ranefs each time
 
 # 6) Turn bootstrap curves into 95% CI bands
 ci_extreme_2016_2023 <- overall_extreme_2016_2023 %>%
-  mutate(lo = apply(boot_extreme_2016_2023$t, 2, quantile, 0.025, na.rm = TRUE), #2.5% quantile at each extreme-event count
-         hi = apply(boot_extreme_2016_2023$t, 2, quantile, 0.975, na.rm = TRUE)) #97.5% quantile at each extreme-event count
+  mutate(lo = apply(boot_extreme_2016_2023$t, 2, quantile, 0.025, na.rm = TRUE), #2.5% quantile at each extreme event count
+         hi = apply(boot_extreme_2016_2023$t, 2, quantile, 0.975, na.rm = TRUE)) #97.5% quantile at each extreme event count
 
-# 7) Set plotting colors for seasons
-pal <- c("#E57373","#E6A64C","#E5C76B","#7FBF7B","#2E7D32","#5C7EE5","#6DAEDB","#D77CC8")
-
-# 8) Make extreme-events plot: observed seasonal points + bootstrap ribbon + weighted mean line + raw points by season
+# 8) Make extreme events plot: observed seasonal points + bootstrap ribbon + weighted mean line + raw points by season
 plot_n_extreme <- ggplot() +
   geom_pointrange(data = observed_extreme_2016_2023, #observed points with exact binomial CI by season
                   aes(n_extreme_both, avg_prop, ymin = lwr, ymax = upr, color = season_fct),
@@ -299,8 +301,8 @@ observed_data_1996_2025 <- intrinsic_variables %>%
             n_success = sum(count_1_pup, na.rm = TRUE), #total successes at each age
             n_trials = sum(total_resights, na.rm = TRUE), #total trials/effort at each age
             avg_prop = n_success/n_trials, #pooled observed proportion at each age
-            lwr = binom.test(n_success, n_trials)$conf.int[1], #exact binomial CI lower bound
-            upr = binom.test(n_success, n_trials)$conf.int[2], #exact binomial CI upper bound
+            lwr = binom.test(n_success, n_trials)$conf.int[1], #binomial CI lower
+            upr = binom.test(n_success, n_trials)$conf.int[2], #binomial CI upper
             .groups = "drop") #return ungrouped tibble
 
 # 4) Build standardized newdata for each age A (for post-stratification)
@@ -336,8 +338,8 @@ overall_1996_2025 <- tibble(AgeYears = ages, #continuous age in years
                             pred = post_curve_overall(mod_binom_1996_2025)) %>% #overall post-stratified predictions
   left_join(observed_data_1996_2025 %>% select(AgeYears, n_age), by = "AgeYears") #add labels for sample size per age
 
-boot_1996_2025 <- bootMer(mod_binom_1996_2025, FUN = post_curve_overall, nsim = nsim, #bootstrap curves by refitting/simulating
-                          type = "parametric", use.u = FALSE) #parametric bootstrap = resimulate random effects each time
+boot_1996_2025 <- bootMer(mod_binom_1996_2025, FUN = post_curve_overall, nsim = nsim, #bootstrap curves
+                          type = "parametric", use.u = FALSE) #parametric bootstrap simulate ranefs each time
 
 # 8) Turn bootstrap curves into 95% CI bands; define Young/Old segment for coloring
 ci_1996_2025 <- overall_1996_2025 %>%
@@ -366,7 +368,7 @@ plot_age_1996_2025 <- ggplot() +
             aes(AgeYears, pred, color = age_cat, group = seg),
             linewidth = 1.3,
             linetype = "dashed") +
-  geom_pointrange(data = observed_data_1996_2025, #pooled observed points with exact binomial CI
+  geom_pointrange(data = observed_data_1996_2025, #pooled observed points with binomial CI
                   aes(AgeYears, avg_prop, ymin = lwr, ymax = upr),
                   color = "black") +
   geom_vline(xintercept = age_senesce - 0.5, linetype = "dashed") +
@@ -436,6 +438,21 @@ exp(fixef(mod_int_2016_2025)) #converts fixed-effect log-odds to odds ratios
 simulateResiduals(mod_int_2016_2025, plot = TRUE) #plot residuals
 check_collinearity(mod_int_2016_2025) #check predictor VIFs
 
+pred_int_density <- ggpredict(
+  mod_int_2016_2025,
+  terms = c("avg_density [all]", "AgeYears [all]"))
+
+ggplot(pred_int_density, aes(x = x, y = predicted, color = group, fill = group)) +
+  geom_line(linewidth = 1) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.15, color = NA) +
+  labs(
+    x = "Average location density",
+    y = "Predicted proportion (MOA)",
+    color = "AgeYears",
+    fill = "AgeYears"
+  ) +
+  theme_minimal()
+
 mod_int_1996_2023 <- glmer(proportion ~ age10 : age_cat * scale(n_extreme_both) + (1 | animalID_fct) + (1 | season_fct),
                            weights = total_resights,
                            family = binomial(link = "logit"),
@@ -447,7 +464,7 @@ simulateResiduals(mod_int_1996_2023, plot = TRUE) #plot residuals
 check_collinearity(mod_int_1996_2023) #check predictor VIFs
 
 ### model with interaction between age*n_extreme_both with all predictors ###
-mod_int_weather_2016_2023 <- glmer(proportion ~ scale(AgeYears) * scale(n_extreme_both) + scale(avg_density) + (1 | animalID_fct) + (1 | season_fct),
+mod_int_weather_2016_2023 <- glmer(proportion ~ scale(AgeYears) * scale(n_extreme_both) + avg_density + (1 | animalID_fct) + (1 | season_fct),
                                    weights = total_resights,
                                    family = binomial(link = "logit"),
                                    control = glmerControl(optimizer = "bobyqa"),
@@ -689,7 +706,7 @@ thr_res <- map_dfr(cutoff, \(a){
          se = row$`Std. Error`,
          p = 2 * pnorm(abs(row$`z value`), lower.tail = FALSE))
 }) %>%
-  mutate(sig = p <= 0.05, # flag significance
+  mutate(sig = p < 0.05, # flag significance
          logp_cap = pmin(-log10(p), 5)) # point size weighted by p
 
 # Plot: coefficient ± 95% CI; bigger points = smaller p; color = significance
@@ -700,7 +717,7 @@ threshold_comparison_figure <- ggplot(thr_res, aes(age_cutoff, coef)) +
                       color = sig,
                       size = logp_cap)) +
   scale_color_manual(values = c(`TRUE` = "deepskyblue", `FALSE` = "tomato"),
-                     labels = c(`TRUE` = "p ≤ 0.05", `FALSE` = "p > 0.05"),
+                     labels = c(`TRUE` = "p < 0.05", `FALSE` = "p > 0.05"),
                      name = "Significance") +
   scale_size_continuous(range = c(0.5, 2.2), guide = "none") +
   scale_x_continuous(breaks = cutoff) +
@@ -986,3 +1003,4 @@ ind_consistency_age$animalID_fct[ind_consistency_age$strategy_cross == "Consiste
 
 ind_consistency_age_perfect <- ind_consistency_age %>%
   filter(strategy_cross == "Consistently above peers")
+

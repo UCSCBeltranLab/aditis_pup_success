@@ -186,6 +186,15 @@ ggplot(intrinsic_variables, aes(x = AgeYears, y = proportion, color = season_fct
        color = "Season") +
   theme_minimal()
 
+#density colored by season (raw)
+ggplot(intrinsic_variables, aes(x = avg_density, y = proportion, color = season_fct)) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+  labs(x = "Age",
+       y = "MOA",
+       color = "Season") +
+  theme_minimal()
+
 #age faceted by season (raw)
 ggplot(intrinsic_variables, aes(x = AgeYears, y = proportion)) +
   geom_point(alpha = 0.35) +
@@ -205,7 +214,7 @@ ggplot(intrinsic_variables, aes(x = AgeYears, y = proportion, color = age_cat)) 
        color = "Age class") +
   theme_minimal()
 
-#support for linear using 2016-2023
+#support for linear using raw data (2016-2023)
 ggplot(intrinsic_2016_2023, aes(x = AgeYears, y = proportion, color = age_cat)) +
   geom_point(alpha = 0.45) +
   geom_smooth(method = "lm", se = FALSE) +
@@ -215,20 +224,9 @@ ggplot(intrinsic_2016_2023, aes(x = AgeYears, y = proportion, color = age_cat)) 
        color = "Age class") +
   theme_minimal()
 
-############## support for interactions ###############
+############## raw data support for interactions ###############
 
-#seasonal extreme events with mean moa by age class
-ggplot(season_age_summary,
-       aes(x = season_fct, y = mean_prop, color = age_cat, group = age_cat)) +
-  geom_line() +
-  geom_point(size = 2) +
-  geom_text(aes(label = n_extreme_both), nudge_y = 0.02, size = 3, show.legend = FALSE) +
-  labs(x = "Season",
-       y = "Mean MOA",
-       color = "Age class") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
+#interaction with age and density using age_cat
 ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +
   geom_point(alpha = 0.45) +
   geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
@@ -236,6 +234,7 @@ ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +
   labs(x = "Average location density", y = "MOA") +
   theme_minimal()
 
+#interaction with age and extreme events using age_cat
 ggplot(intrinsic_variables, aes(x = n_extreme_both, y = proportion)) +
   geom_point(alpha = 0.45) +
   geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
@@ -243,6 +242,41 @@ ggplot(intrinsic_variables, aes(x = n_extreme_both, y = proportion)) +
   labs(x = "Number of extreme wave and tide events", y = "MOA") +
   theme_minimal()
 
+#with linear age as a color for each line
+ggplot(intrinsic_variables, 
+       aes(x = avg_density, y = proportion, color = factor(AgeYears))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Average location density",
+       y = "MOA",
+       color = "Age (years)") +
+  theme_minimal()
+
+#with linear age as a color for each line
+ggplot(intrinsic_variables, 
+       aes(x = n_extreme_both, y = proportion, color = factor(AgeYears))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Number of extreme wave and tide events",
+       y = "MOA",
+       color = "Age (years)") +
+  theme_minimal()
+
+#interaction age and density with linear age
+ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +
+  geom_point(alpha = 0.45) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
+  facet_wrap(~ AgeYears) +
+  labs(x = "Average location density", y = "MOA") +
+  theme_minimal()
+
+#interaction with age and extreme with linear age
+ggplot(intrinsic_variables, aes(x = n_extreme_both, y = proportion)) +
+  geom_point(alpha = 0.45) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
+  facet_wrap(~ AgeYears) +
+  labs(x = "Number of extreme wave and tide events", y = "MOA") +
+  theme_minimal()
 
 
 
