@@ -2,6 +2,8 @@ library(dplyr)
 library(sf)
 library(purrr)
 library(stringr)
+install.packages("rnaturalearth")
+library(rnaturalearth)
 
 options(scipen = 999)
 sf_use_s2(FALSE)
@@ -9,6 +11,8 @@ sf_use_s2(FALSE)
 # Read beaches 
 beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp", quiet = TRUE) %>%
   select(-id)
+
+plot(st_geometry(beaches))
 
 # Picterra outputs (already include "polygons.shp")
 base_dir <- "./RawData/Picterra_outputs_updated"

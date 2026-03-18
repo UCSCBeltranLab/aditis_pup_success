@@ -190,7 +190,21 @@ ggplot(intrinsic_variables, aes(x = AgeYears, y = proportion, color = season_fct
 ggplot(intrinsic_variables, aes(x = avg_density, y = proportion, color = season_fct)) +
   geom_point(alpha = 0.35) +
   geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
-  labs(x = "Age",
+  labs(x = "Density",
+       y = "MOA",
+       color = "Season") +
+  theme_minimal()
+
+#extreme events w/ season colors
+ggplot(intrinsic_variables, 
+       aes(x = n_extreme_both, y = proportion, color = season_fct)) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(aes(group = 1),
+              method = "lm", 
+              se = TRUE, 
+              color = "black", 
+              linewidth = 1) +
+  labs(x = "Extreme events",
        y = "MOA",
        color = "Season") +
   theme_minimal()
@@ -201,6 +215,15 @@ ggplot(intrinsic_variables, aes(x = AgeYears, y = proportion)) +
   geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
   facet_wrap(~ season_fct) +
   labs(x = "Age",
+       y = "MOA") +
+  theme_minimal()
+
+#density faceted by season (raw)
+ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
+  facet_wrap(~ season_fct) +
+  labs(x = "Density",
        y = "MOA") +
   theme_minimal()
 
