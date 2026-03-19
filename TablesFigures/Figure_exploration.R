@@ -110,14 +110,16 @@ ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
        y = "Number of Extreme Wave and Tide Events") +
   theme_minimal()
 
+tide_wave_flagged_sub <- tide_wave_flagged %>%
+  filter(season >= 2016 & season <= 2023)
+
 ##per-year extreme wave and tide events bar plot
-ggplot(tide_wave_flagged, aes(x = season, y = n_extreme_both)) +
+ggplot(tide_wave_flagged_sub, aes(x = season, y = n_extreme_both)) +
   geom_bar(stat = "identity", fill = "lightpink") +
   labs(x = "Year", 
        y = "Number of extreme wave and tide events") +
   theme_few() +
-  scale_y_continuous(n.breaks = 10) +
-  scale_x_continuous(n.breaks = 23)
+scale_x_continuous(n.breaks = 10)
 
 ##proportion vs. extreme wave and tide
 ggplot(intrinsic_variables,
@@ -247,7 +249,7 @@ ggplot(intrinsic_2016_2023, aes(x = AgeYears, y = proportion, color = age_cat)) 
        color = "Age class") +
   theme_minimal()
 
-############## raw data support for interactions ###############
+############## aw data support for interactions ###############
 
 #interaction with age and density using age_cat
 ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +

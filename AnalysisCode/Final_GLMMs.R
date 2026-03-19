@@ -183,7 +183,7 @@ plot_density_jitter <- ggplot() +
         axis.text.y  = element_text(size = 16),
         legend.text = element_text(size = 16),
         legend.title = element_text(size = 16)) +
-  labs(x = "Within-colony location density",
+  labs(x = "Location density (average number of seals/10m radius)",
        y = "Mother-offspring association"); plot_density_jitter
 
 ########### Density figure (binned) ###########
@@ -662,19 +662,32 @@ ggplot(pred_mod_int, aes(x = x, y = predicted, group = group)) +
   labs(x = "Maternal age", y = "Predicted MOA") +
   theme_minimal()
 
-pred_mod_int$AgeYears <- parse_number(as.character(pred_mod_int$x))
+# Predictions: x = extreme_c, lines = AgeYears
+pred_mod_int <- ggpredict(
+  mod_int_weather_2016_2023,
+  terms = c("extreme_c [all]", "AgeYears [all]")
+)
 
-ggplot(pred_mod_int, aes(x = n_extreme_both_num, y = predicted, group = x)) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
-              alpha = 0.08, color = NA) +
-  geom_line(aes(color = Age_num),
-            linewidth = 1, alpha = 0.9) +
-  labs(x = "Number of extreme events",
-       y = "Mother-offspring association") +
+# Convert age groups to numeric for gradient coloring
+pred_mod_int$AgeYears_num <- readr::parse_number(as.character(pred_mod_int$group))
+
+ggplot(pred_mod_int,
+       aes(x = x, y = predicted, group = group)) +
+  geom_ribbon(
+    aes(ymin = conf.low, ymax = conf.high, fill = AgeYears_num), alpha = 0.15
+  ) +
+  geom_line(
+    aes(color = AgeYears_num),
+    linewidth = 1, alpha = 0.9
+  ) +
+  labs(
+    x = "Number of extreme events",
+    y = "Predicted MOA"
+  ) +
   theme_minimal()
 
 ### model with interaction between age*density with all predictors ###
-mod_int_density_2016_2023 <- glmer(proportion ~ AgeYears * avg_density + n_extreme_both + (1 | animalID_fct) + (1 | season_fct),
+mod_int_density_2016_2023 <- glmer(proportion ~ Age_c * density_c + extreme_c + (1 | animalID_fct) + (1 | season_fct),
                                    weights = total_resights,
                                    family = binomial(link = "logit"),
                                    control = glmerControl(optimizer = "bobyqa"),
@@ -1219,7 +1232,7 @@ ind_consistency_age <- season_level_age_centered %>%
   mutate(consistency_dev = exp(-sd_dev)) #rescale so consistency is 0-1 and 1 is highly consistent
 
 ##Arbitrary thresholds (can change)
-dev_eps     <- 0.05 #change of 0.05 in dev from mean is different from mean
+dev_eps     <- 0.03 #change of 0.05 in dev from mean is different from mean
 cons_thresh <- 0.90 #above 0.9 is highly consistent
 
 # 4) Individual mean and consistency classifications based on the thresholds
@@ -1273,10 +1286,10 @@ consistency_figure <- ggplot(ind_consistency_age,
   scale_color_manual(values = c(
     "Consistently above peers" = "#1f78b4",
     "Consistently near mean"   = "#4DB6AC",
-    "Consistently below peers" = "orange",
-    "Inconsistent above peers" = "#6F73D2",
-    "Inconsistent near mean"   = "pink",
-    "Inconsistent below peers" = "#D17A92",
+    "Consistently below peers" = "#D17A92",
+    "Inconsistent above peers" = "pink",
+    "Inconsistent near mean"   = "#6F73D2",
+    "Inconsistent below peers" = "orange",
     "Other"                    = "grey60"
   )) +
   scale_size_continuous(name = "Total observations", range = c(2, 10)) +
@@ -1287,9 +1300,25 @@ consistency_figure <- ggplot(ind_consistency_age,
     title = "Age-normalized maternal strategies",
     subtitle = "Mean deviation from age peers (x) and consistency in deviation (y)"
   ) +
+  annotate("text", x =  max_abs * 0.7, y = cons_thresh + 0.07,
+           label = "More consistent",
+           size = 4) +
+  
+  annotate("text", x =  max_abs * 0.7, y = cons_thresh - 0.07,
+           label = "Less consistent",
+           size = 4) +
+  
+  annotate("text", x =  max_abs * 0.6, y = 0.55,
+           label = "Above age mean",
+           size = 4) +
+  
+  annotate("text", x = -max_abs * 0.6, y = 0.55,
+           label = "Below age mean",
+           size = 4) +
   guides(alpha = "none") +
   theme_few(base_size = 14) +
   scale_x_continuous(limits = c(-max_abs, max_abs)) +
+  coord_cartesian(ylim = c(0.5, 1), clip = "off") +
   theme(
     legend.position = "top",
     legend.box = "vertical",

@@ -111,11 +111,6 @@ plot_df_full <- plot_df %>%
     y = 1
   )
 
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(grid)
-
 # choose actual dates to label, but keep every day as a tile
 label_every <- 3   # try 2, 3, or 5
 x_breaks <- date_lookup$day_index[seq(1, nrow(date_lookup), by = label_every)]
@@ -206,3 +201,110 @@ ggsave(
   width = 49,
   height = 20
 )
+
+################ density conceptual plot ###################
+library(sf)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rnaturalearthhires)
+
+library(sf)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(shadowtext)
+library(viridis)
+library(maptiles)
+library(tidyterra)
+
+# 1) Read beaches shapefile
+beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp", quiet = TRUE) %>%
+  select(-id)
+
+# 2) Read density data
+seal.density <- read.csv("./RawData/seal.density.csv")
+
+# 3) Mean density per beach across years
+area_density_mean <- seal.density %>%
+  rename(dominant_area = Beach) %>%
+  group_by(dominant_area) %>%
+  summarize(mean_density = mean(density, na.rm = TRUE), .groups = "drop")
+
+# 4) Check the beach-name field in your shapefile
+names(beaches)
+
+# Replace "Beach" below if your shapefile uses a different name field
+beaches_density <- beaches %>%
+  left_join(area_density_mean, by = c("Beach" = "dominant_area"))
+
+# 5) Make labels: beach name + mean density
+label_points <- st_point_on_surface(beaches_density) %>%
+  mutate(
+    label_text = paste0(
+      Beach, "\n",
+      round(mean_density, 2)
+    )
+  )
+
+# 6) Get extent for zooming and tile download
+bbox <- st_bbox(beaches_density)
+
+# Convert bbox to sf object for maptiles
+bbox_sf <- st_as_sfc(bbox) %>%
+  st_as_sf()
+
+# expand bbox a little before downloading tiles
+buffer_x <- 0.0007
+buffer_y <- 0.0007
+
+bbox_expanded <- bbox
+bbox_expanded["xmin"] <- bbox["xmin"] - buffer_x
+bbox_expanded["xmax"] <- bbox["xmax"] + buffer_x
+bbox_expanded["ymin"] <- bbox["ymin"] - buffer_y
+bbox_expanded["ymax"] <- bbox["ymax"] + buffer_y
+
+bbox_sf_expanded <- st_as_sfc(bbox_expanded) %>%
+  st_as_sf()
+
+# re-download tiles using expanded extent
+sat_map <- get_tiles(
+  x = bbox_sf_expanded,
+  provider = "Esri.WorldImagery",
+  crop = TRUE,
+  zoom = 16
+)
+
+seal_density_map <- ggplot() +
+  geom_spatraster_rgb(data = sat_map) +
+  geom_sf(
+    data = beaches_density,
+    aes(fill = mean_density),
+    color = "white",
+    linewidth = 0.4,
+    alpha = 0.8
+  ) +
+  scale_fill_viridis_c(
+    option = "mako",
+    direction = -1,
+    name = "Mean density per location\n(average seals per 10m radius)"
+  ) +
+  coord_sf(
+    xlim = c(bbox_expanded["xmin"], bbox_expanded["xmax"]),
+    ylim = c(bbox_expanded["ymin"], bbox_expanded["ymax"]),
+    expand = FALSE
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    panel.grid = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ); seal_density_map
+
+ggsave("./TablesFigures/seal_density_map.png", plot = seal_density_map, width = 30, height = 30, dpi = 300, bg = "white")
+
