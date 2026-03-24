@@ -18,6 +18,7 @@ library(gt)
 library(flextable)
 library(grid)
 library(cowplot)
+library(viridisLite)
 
 ################################ Defining MPA + intrinsic data processing ###############################
 
@@ -233,10 +234,18 @@ wave_data_clean <- wave_data_clean %>%
 tide_wave <- left_join(wave_data_clean, tide_data_clean, by = c("wave_datetime" = "tide_datetime", "season")) %>%
   filter(!is.na(`Verified (ft)`)) #make sure there are no NAs for tide height
 
+quantile(tide_wave$wave_power,
+         probs = c(0.9, 0.95, 0.975, 0.99),
+         na.rm = TRUE)
+
+quantile(tide_wave$`Verified (ft)`,
+         probs = c(0.9, 0.95, 0.975, 0.99),
+         na.rm = TRUE)
+
 # 4) Flag and categorize extreme events
 ##set extreme wave and tide threshold levels
-extreme_wave_threshold <- 30 #30 kW/m, tested multiple + still needs justification
-extreme_tide_threshold <- 6 #6 ft, tested multiple + still needs justification
+extreme_wave_threshold <- 110.8388 #based on 0.95
+extreme_tide_threshold <- 5.53 #based on 0.95
 
 ##flag cases where both wave power and tide were extreme
 tide_wave_flagged <- tide_wave %>%

@@ -22,7 +22,7 @@ plot_age <- plot_grid(
   vjust = 1
 ); plot_age
 
-ggsave("./TablesFigures/age_plots.png", plot_age, width = 8, height = 10, dpi = 600)
+ggsave("./TablesFigures/experience_figure.png", plot = plot_exp_1996_2025, width = 10, height = 6, dpi = 600)
 
 ############ conceptual MOA figure #########
 
@@ -210,12 +210,6 @@ library(ggplot2)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(rnaturalearthhires)
-
-library(sf)
-library(dplyr)
-library(lubridate)
-library(ggplot2)
-library(shadowtext)
 library(viridis)
 library(maptiles)
 library(tidyterra)
@@ -289,7 +283,8 @@ seal_density_map <- ggplot() +
   scale_fill_viridis_c(
     option = "mako",
     direction = -1,
-    name = "Mean density per location\n(average seals per 10m radius)"
+    name = "Mean location density
+(seals per 10m radius)"
   ) +
   coord_sf(
     xlim = c(bbox_expanded["xmin"], bbox_expanded["xmax"]),

@@ -249,7 +249,7 @@ ggplot(intrinsic_2016_2023, aes(x = AgeYears, y = proportion, color = age_cat)) 
        color = "Age class") +
   theme_minimal()
 
-############## aw data support for interactions ###############
+############## Raw data support for interactions ###############
 
 #interaction with age and density using age_cat
 ggplot(intrinsic_variables, aes(x = avg_density, y = proportion)) +

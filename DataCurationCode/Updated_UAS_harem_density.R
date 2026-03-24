@@ -1,27 +1,24 @@
+
+# Load libraries and data -------------------------------------------------
 library(dplyr)
+library(lubridate)
 library(sf)
 library(purrr)
-library(stringr)
-install.packages("rnaturalearth")
-library(rnaturalearth)
 
 options(scipen = 999)
 sf_use_s2(FALSE)
 
-# Read beaches 
+# read in beach shapefile
+list.files("..", pattern = "Ano Nuevo.*\\.shp$", recursive = TRUE, full.names = TRUE)
+
 beaches <- st_read("./RawData/ANM map/Ano Nuevo Map Final.shp", quiet = TRUE) %>%
   select(-id)
 
-plot(st_geometry(beaches))
-
-# Picterra outputs (already include "polygons.shp")
+# read in seal detections
 base_dir <- "./RawData/Picterra_outputs_updated"
 
-# returns paths like "2016/polygons.shp", "20210129/polygons.shp", etc
-shps  <- list.files(base_dir, recursive = TRUE, pattern = "polygons\\.shp$", full.names = FALSE)
+shps <- list.files(base_dir, recursive = TRUE, pattern = "polygons\\.shp$", full.names = FALSE)
 
-# Extract "date" as the folder name right above polygons.shp
-# e.g., "2016/polygons.shp" -> "2016"
 dates <- dirname(shps)
 years <- substr(dates, 1, 4)
 
@@ -39,45 +36,179 @@ read_one <- function(rel_shp, d, y) {
 
 picterra.list <- pmap(list(rel_shp = shps, d = dates, y = years), read_one) |> compact()
 
-stopifnot(length(picterra.list) > 0)
-
-# rbind keeps sf class reliably
 picterra.output <- do.call(rbind, picterra.list)
-stopifnot(inherits(picterra.output, "sf"))
 
-# Convert to projected CRS ------------------------------------------------
-picterra.output <- st_transform(picterra.output, 26943)
-beaches         <- st_transform(beaches, 26943)
+# Convert to NAD83 / California zone 3 ------------------------------------
+st_crs(picterra.output)
 
-# Use existing classifications in age_sex (as in your second script) ------
+picterra.output <- st_transform(picterra.output, "EPSG:26943")
+
+st_crs(picterra.output)
+
+beaches <- st_transform(beaches, "EPSG:26943")
+
+# Assign age/sex class to seals -------------------------------------------
 uas.data <- picterra.output %>%
   mutate(age_sex = tolower(as.character(age_sex))) %>%
   filter(age_sex %in% c("female", "male", "pup"))
 
 # Assign seals to beach ---------------------------------------------------
-centroids      <- st_centroid(uas.data)
+centroids <- st_centroid(uas.data)
+
 seals_by_beach <- st_intersection(beaches, centroids)
 
-# Calculate female density (FEMALES ONLY) --------------------------------
-density.df <- list()
+# Calculate female density ------------------------------------------------
+density.df <- data.frame()
 
-for (d in unique(dates)) {
+for (i in 1:length(dates)) {
   
   survey.subset <- seals_by_beach %>%
-    filter(date == d, age_sex == "female")  # <-- females only
+    filter(date == dates[i],
+           age_sex == "female")
   
   if (nrow(survey.subset) == 0) next
   
   seal.centroids <- st_centroid(survey.subset)
-  seal.buffer    <- st_buffer(seal.centroids, 10)
+  
+  ## set to 10m, but you can modify that to whatever you would like!
+  seal.buffer <- st_buffer(seal.centroids, 10)
   
   int <- st_intersects(seal.buffer, seal.centroids)
+  
   survey.subset$density <- lengths(int) - 1
   
-  density.df[[d]] <- survey.subset
+  density.df <- rbind(density.df, survey.subset)
 }
 
-density.df <- bind_rows(density.df)
+# Plot an example ---------------------------------------------------------
+
+###low density version 
+
+# grab a LIGHT color from mako
+light_mako <- viridis(190, option = "mako", direction = -1)[20]
+
+# find a seal with 5 neighbors (or closest to 5 if none exist)
+target_n <- 5
+best_diff <- Inf
+low_example <- NULL
+
+for (i in 1:nrow(uas.data)) {
+  
+  focal <- uas.data[i, ]
+  
+  if (focal$age_sex[1] != "female") next
+  
+  same <- uas.data %>%
+    filter(date == focal$date[1],
+           age_sex == "female")
+  
+  hits <- st_intersects(
+    st_buffer(st_centroid(focal), 10),
+    st_centroid(same)
+  )[[1]]
+  
+  n_neighbors <- length(hits) - 1
+  
+  if (n_neighbors == target_n) {
+    low_example <- focal
+    break
+  }
+  
+  if (abs(n_neighbors - target_n) < best_diff) {
+    best_diff <- abs(n_neighbors - target_n)
+    low_example <- focal
+  }
+}
+
+# plot
+seal.buffer <- st_buffer(st_centroid(low_example), 10)
+
+same <- uas.data %>%
+  filter(date == low_example$date[1],
+         age_sex == "female")
+
+hits <- st_intersects(seal.buffer, st_centroid(same))[[1]]
+
+int.poly <- same[hits[-1], ]   # drop focal seal itself
+
+plot(st_geometry(seal.buffer), border = "grey40")
+
+# surrounding seals
+plot(st_geometry(int.poly),
+     add = TRUE,
+     col = light_mako,
+     border = "grey40")
+
+# focal seal (draw last so it's on top)
+plot(st_geometry(low_example),
+     add = TRUE,
+     col = light_mako,
+     border = "black",
+     lwd = 3)
+
+###high density version
+
+dark_mako <- viridis(60, option = "mako", direction = 1)[20]
+
+# find a seal with MANY neighbors (target ~18, or closest)
+target_n <- 18
+best_diff <- Inf
+high_example <- NULL
+
+for (i in 1:nrow(uas.data)) {
+  
+  focal <- uas.data[i, ]
+  
+  if (focal$age_sex[1] != "female") next
+  
+  same <- uas.data %>%
+    filter(date == focal$date[1],
+           age_sex == "female")
+  
+  hits <- st_intersects(
+    st_buffer(st_centroid(focal), 10),
+    st_centroid(same)
+  )[[1]]
+  
+  n_neighbors <- length(hits) - 1
+  
+  if (n_neighbors == target_n) {
+    high_example <- focal
+    break
+  }
+  
+  if (abs(n_neighbors - target_n) < best_diff) {
+    best_diff <- abs(n_neighbors - target_n)
+    high_example <- focal
+  }
+}
+
+# plot
+seal.buffer <- st_buffer(st_centroid(high_example), 10)
+
+same <- uas.data %>%
+  filter(date == high_example$date[1],
+         age_sex == "female")
+
+hits <- st_intersects(seal.buffer, st_centroid(same))[[1]]
+int.poly <- same[hits[-1], ]   # drop focal seal
+
+plot(st_geometry(seal.buffer), border = "grey40")
+
+# surrounding seals
+plot(st_geometry(int.poly),
+     add = TRUE,
+     col = dark_mako,
+     border = "grey40")
+
+# focal seal (on top)
+plot(st_geometry(high_example),
+     add = TRUE,
+     col = dark_mako,
+     border = "black",
+     lwd = 6)
+
+# Save data ---------------------------------------------------------------
 
 seal.density <- density.df %>%
   mutate(
@@ -88,5 +219,5 @@ seal.density <- density.df %>%
   select(date, age_sex, lat, lon, Beach, density) %>%
   st_drop_geometry()
 
-write.csv(seal.density, "./IntermediateData/seal.density.csv", row.names = FALSE)
-
+write.csv(seal.density, "./IntermediateData/seal.density.csv",
+          row.names = FALSE)
