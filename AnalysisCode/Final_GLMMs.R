@@ -556,7 +556,7 @@ plot_age_season_1996_2025 <- ggplot() +
 ################### Experience threshold test ###################
 
 # 1) test all possible experience thresholds
-cutoff <- 1:9
+cutoff <- 1:11
 
 # 2) For each cutoff:
 # a) define inexperienced vs. experienced at a, and center experience at a
