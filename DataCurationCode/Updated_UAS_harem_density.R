@@ -25,7 +25,6 @@ years <- substr(dates, 1, 4)
 read_one <- function(rel_shp, d, y) {
   
   shp_path <- file.path(base_dir, rel_shp)
-  if (!file.exists(shp_path)) return(NULL)
   
   x <- st_read(shp_path, quiet = TRUE) %>%
     mutate(date = d, year = y)
@@ -80,6 +79,20 @@ for (i in 1:length(dates)) {
   density.df <- rbind(density.df, survey.subset)
 }
 
+# Save data ---------------------------------------------------------------
+
+seal.density <- density.df %>%
+  mutate(
+    centroid = st_centroid(geometry),
+    lon = st_coordinates(centroid)[,1],
+    lat = st_coordinates(centroid)[,2]
+  ) %>%
+  select(date, age_sex, lat, lon, Beach, density) %>%
+  st_drop_geometry()
+
+write.csv(seal.density, "./RawData/seal.density.csv",
+          row.names = FALSE)
+
 # Plot an example ---------------------------------------------------------
 
 ###low density version 
@@ -131,6 +144,14 @@ hits <- st_intersects(seal.buffer, st_centroid(same))[[1]]
 
 int.poly <- same[hits[-1], ]   # drop focal seal itself
 
+png("./TablesFigures/density_example_low.png",
+    width = 2000,
+    height = 2000,
+    res = 300,
+    bg = "transparent")   # <-- makes outside transparent
+
+par(bg = NA, mar = c(0, 0, 0, 0))  # remove outer margins
+
 plot(st_geometry(seal.buffer), border = "grey40")
 
 # surrounding seals
@@ -146,9 +167,11 @@ plot(st_geometry(low_example),
      border = "black",
      lwd = 3)
 
+dev.off()
+
 ###high density version
 
-dark_mako <- viridis(60, option = "mako", direction = 1)[20]
+dark_mako <- viridis(50, option = "mako", direction = 1)[20]
 
 # find a seal with MANY neighbors (target ~18, or closest)
 target_n <- 18
@@ -193,6 +216,14 @@ same <- uas.data %>%
 hits <- st_intersects(seal.buffer, st_centroid(same))[[1]]
 int.poly <- same[hits[-1], ]   # drop focal seal
 
+png("./TablesFigures/density_example_high.png",
+    width = 2000,
+    height = 2000,
+    res = 300,
+    bg = "transparent")   # outside = transparent
+
+par(bg = NA, mar = c(0, 0, 0, 0))  # remove margins
+
 plot(st_geometry(seal.buffer), border = "grey40")
 
 # surrounding seals
@@ -206,18 +237,7 @@ plot(st_geometry(high_example),
      add = TRUE,
      col = dark_mako,
      border = "black",
-     lwd = 6)
+     lwd = 5)
 
-# Save data ---------------------------------------------------------------
+dev.off()
 
-seal.density <- density.df %>%
-  mutate(
-    centroid = st_centroid(geometry),
-    lon = st_coordinates(centroid)[,1],
-    lat = st_coordinates(centroid)[,2]
-  ) %>%
-  select(date, age_sex, lat, lon, Beach, density) %>%
-  st_drop_geometry()
-
-write.csv(seal.density, "./IntermediateData/seal.density.csv",
-          row.names = FALSE)

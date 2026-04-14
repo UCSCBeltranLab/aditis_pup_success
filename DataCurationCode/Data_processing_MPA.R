@@ -6,11 +6,13 @@ library(utils)
 library(dplyr)
 library(glmmTMB)
 library(lme4)
+library(lmerTest)
 library(DHARMa)
 library(ggeffects)
 library(performance)
 library(ggplot2)
 library(ggthemes)
+library(ggtext)
 library(RColorBrewer)
 library(parallel)
 library(binom)
@@ -242,10 +244,16 @@ quantile(tide_wave$`Verified (ft)`,
          probs = c(0.9, 0.95, 0.975, 0.99),
          na.rm = TRUE)
 
+quantile(tide_wave$WVHT,
+         probs = c(0.9, 0.95, 0.975, 0.99),
+         na.rm = TRUE)
+
+cor(tide_wave$WVHT, tide_wave$`Verified (ft)`, use = "complete.obs")
+
 # 4) Flag and categorize extreme events
 ##set extreme wave and tide threshold levels
-extreme_wave_threshold <- 110.8388 #based on 0.95
-extreme_tide_threshold <- 5.53 #based on 0.95
+extreme_wave_threshold <- 110.8388
+extreme_tide_threshold <- 5.03
 
 ##flag cases where both wave power and tide were extreme
 tide_wave_flagged <- tide_wave %>%
@@ -273,14 +281,15 @@ source("./DataCurationCode/Updated_UAS_harem_density.R")
 # 1) seal density csv read
 seal.density <- read.csv("./RawData/seal.density.csv")
 
+seal.density$season <- as.integer(substr(seal.density$date, 1, 4))
+
 # 2a) Calculate average density per area-season for modeling, then link to assigned harems
 area_density <- seal.density %>%
-  rename(dominant_area = Beach) %>% 
-  mutate(date = ymd(date), season = year(date)) %>% 
+  rename(dominant_area = Beach) %>%
   #transform the date column so that it's in date form with year = season to match the resight data
   group_by(dominant_area, season) %>%
   summarize(avg_density = mean(density)) %>% #calculate mean density per area in each season 
-  ungroup() |>
+  ungroup() %>%
   left_join(harem_assignment, by = c("season", "dominant_area")) %>% 
   filter(!is.na(animalID)) #only keep animals observed in the 2016-2025 dataset to match the drone data
 
@@ -332,7 +341,7 @@ area_density <- area_density %>%
 ##make table with intrinsic variables
 intrinsic_variables <- metadata %>%
   ## left_join(harem_assignment, by = c("animalID", "season")) %>% 
-  select(animalID, season, AgeYears, BirthDate, year_born, residual_experience, experience_prior, proportion, total_resights, count_1_pup) %>%
+  select(animalID, season, AgeYears, BirthDate, year_born, experience_prior, proportion, total_resights, count_1_pup) %>%
   distinct(animalID, season, .keep_all = TRUE) %>%  # get rid of duplicates so only 1 row per animal-season
   filter(!is.na(proportion), proportion > 0) %>%
   mutate(BirthDate = as.Date(BirthDate),
